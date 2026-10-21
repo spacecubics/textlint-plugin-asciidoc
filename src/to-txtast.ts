@@ -205,11 +205,23 @@ export function toTxtAST(
     // acdc removes full-line comments inside paragraphs before parsing inlines.
     // Only reconstruct them if removing precisely these lines reproduces its value.
     const pattern = /^\/\/[^\r\n]*(?:\r\n|\n|$)/gm;
-    const matches = [...span.raw.matchAll(pattern)];
+    const matches = [...span.raw.matchAll(pattern)].filter(
+      (match) =>
+        !opaqueRanges.some(
+          ([start, end]) =>
+            start <= span.range[0] + match.index &&
+            span.range[0] + match.index < end,
+        ),
+    );
     if (!matches.length) return [inline(node)];
     if (
-      span.raw
-        .replace(pattern, "")
+      matches
+        .reduceRight(
+          (raw, match) =>
+            raw.slice(0, match.index) +
+            raw.slice(match.index + match[0].length),
+          span.raw,
+        )
         .replace(/\r\n/g, "\n")
         .replace(/[ \t]+(?=\n)/g, "") !== node.value
     )

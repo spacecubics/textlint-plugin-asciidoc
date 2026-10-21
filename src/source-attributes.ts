@@ -1,5 +1,6 @@
 import { type AcdcParseResult, parseAsciiDoc } from "./acdc.js";
 import type { AcdcNode, AcdcPosition } from "./acdc-types.js";
+import { conditionalLines } from "./source-conditionals.js";
 
 /** Parse source spelling instead of attribute-expanded prose. acdc 0.11 has
  * no public switch for disabling attribute substitutions throughout a document.
@@ -23,50 +24,80 @@ export function parseSource(source: string): AcdcParseResult {
     continuation = definition && /(?:\\| \+)[ \t]*$/.test(line);
   }
   let nextToken = 0xe000;
-  const input = source.replace(
-    /^include::[^\r\n]+\[[^\r\n]*\][ \t]*(?=\r?$)|\{[a-zA-Z0-9_-]+\\?\}|\\[|!]/gm,
-    (original: string, offset: number) => {
-      if (
-        structuralRanges.some(([start, end]) => start <= offset && offset < end)
-      )
-        return original;
-      while (
-        nextToken <= 0xf8ff &&
-        source.includes(String.fromCharCode(nextToken))
-      )
-        nextToken++;
-      if (nextToken > 0xf8ff)
-        throw new Error(
-          "Too many attribute references for source-preserving parsing",
-        );
-      const masked = String.fromCharCode(nextToken++).repeat(
-        Array.from(original).length,
-      );
-      const directive = original.startsWith("include::");
-      // Table separator escapes are also removed before acdc computes inline
-      // ranges. Protect them without treating them as attribute references.
-      const escaped =
-        directive ||
-        original.startsWith("\\") ||
-        source[offset - 1] === "\\" ||
-        original.endsWith("\\}");
-      // A bare attribute target needs link syntax even when expansion is disabled.
-      const link =
-        !escaped &&
-        source[offset + original.length] === "[" &&
-        (offset === 0 || /[\s(]/u.test(source[offset - 1]));
-      if (link) {
-        const before = source.slice(0, offset).split(/\r\n|\n|\r/);
-        const line = before.length;
-        const col = Array.from(before[before.length - 1]).length + 1;
-        insertions.set(line, [...(insertions.get(line) ?? []), col]);
-      }
-      tokens.push({ masked, original, link });
-      if (directive) directives.push([offset, offset + original.length]);
-      if (!escaped) references.push([offset, offset + original.length]);
-      return `${link ? "link:" : ""}${masked}`;
-    },
+  const conditionals = conditionalLines(source);
+  const matches = [
+    ...source.matchAll(
+      /^include::[^\r\n]+\[[^\r\n]*\][ \t]*(?=\r?$)|\{[a-zA-Z0-9_-]+\\?\}|\\[|!]/gm,
+    ),
+  ]
+    .filter(
+      (match) =>
+        !conditionals.some(
+          ([start, end]) => start <= match.index && match.index < end,
+        ),
+    )
+    .map((match) => ({
+      original: match[0],
+      offset: match.index,
+      conditional: false,
+    }));
+  matches.push(
+    ...conditionals.map(([start, end]) => ({
+      original: source.slice(start, end),
+      offset: start,
+      conditional: true,
+    })),
   );
+  matches.sort((a, b) => a.offset - b.offset);
+  const mask = (original: string, offset: number, conditional: boolean) => {
+    if (
+      !conditional &&
+      structuralRanges.some(([start, end]) => start <= offset && offset < end)
+    )
+      return original;
+    while (
+      nextToken <= 0xf8ff &&
+      source.includes(String.fromCharCode(nextToken))
+    )
+      nextToken++;
+    if (nextToken > 0xf8ff)
+      throw new Error(
+        "Too many attribute references for source-preserving parsing",
+      );
+    const masked = String.fromCharCode(nextToken++).repeat(
+      Array.from(original).length,
+    );
+    const directive = conditional || original.startsWith("include::");
+    // Table separator escapes are also removed before acdc computes inline
+    // ranges. Protect them without treating them as attribute references.
+    const escaped =
+      directive ||
+      original.startsWith("\\") ||
+      source[offset - 1] === "\\" ||
+      original.endsWith("\\}");
+    // A bare attribute target needs link syntax even when expansion is disabled.
+    const link =
+      !escaped &&
+      source[offset + original.length] === "[" &&
+      (offset === 0 || /[\s(]/u.test(source[offset - 1]));
+    if (link) {
+      const before = source.slice(0, offset).split(/\r\n|\n|\r/);
+      const line = before.length;
+      const col = Array.from(before[before.length - 1]).length + 1;
+      insertions.set(line, [...(insertions.get(line) ?? []), col]);
+    }
+    tokens.push({ masked, original, link });
+    if (directive) directives.push([offset, offset + original.length]);
+    if (!escaped) references.push([offset, offset + original.length]);
+    return `${link ? "link:" : ""}${masked}`;
+  };
+  let cursor = 0;
+  let input = "";
+  for (const { original, offset, conditional } of matches) {
+    input += source.slice(cursor, offset) + mask(original, offset, conditional);
+    cursor = offset + original.length;
+  }
+  input += source.slice(cursor);
   const result = parseAsciiDoc(input);
   const recoveredAuthorLines = new Set<number>();
   const recoveredWarnings = new Set<number>();

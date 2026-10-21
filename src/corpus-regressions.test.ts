@@ -341,3 +341,30 @@ describe("comment gap source positions", () => {
     );
   });
 });
+
+describe("conditional source isolation", () => {
+  it.each([
+    "ifdef::missing[]\nHidden teh 😀.\nendif::[]",
+    "ifndef::missing[]\nHidden teh.\nifdef::nested[]\nNested teh.\nendif::[]\nendif::[]",
+    "ifeval::[1 == 1]\nHidden teh.\nendif::[]",
+    "ifdef::missing[Hidden teh.]",
+    "ifdef::missing[]\n// textlint-disable\nHidden teh {name}.\n\n:attr: teh\nendif::[]",
+  ])("isolates %s without losing adjacent prose", async (element) => {
+    for (const eol of ["\n", "\r\n"]) {
+      const text = `😀 Before teh.\n${element}\nAfter teh {name}.`.replaceAll(
+        "\n",
+        eol,
+      );
+      await checkFix(
+        text,
+        text
+          .replace("Before teh", "Before the")
+          .replace("After teh", "After the"),
+      );
+    }
+  });
+  it("keeps conditional-looking code from hiding following prose", async () => {
+    const text = "----\nifdef::missing[]\n----\n\nAfter teh.";
+    await checkFix(text);
+  });
+});
