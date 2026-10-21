@@ -1,0 +1,44 @@
+name: Build and test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+      - name: Install dependencies
+        run: nix develop --command pnpm install --frozen-lockfile
+      - name: Check Rust formatting
+        run: nix develop --command cargo fmt --check
+      - name: Lint Rust
+        run: nix develop --command cargo clippy --locked -- -D warnings
+      - name: Build JavaScript and WASM
+        run: nix develop --command pnpm build
+      - name: Check formatting and lint
+        run: nix develop --command pnpm check
+      - name: Check TypeScript types
+        run: nix develop --command pnpm typecheck
+      - name: Run tests
+        run: nix develop --command pnpm exec vitest run
+      - name: Pack release archive
+        run: nix develop --command pnpm pack --out "$RUNNER_TEMP/textlint-plugin-asciidoc.tgz"
+      - name: Verify package installation
+        run: nix develop --command node scripts/check-package.mjs "$RUNNER_TEMP/textlint-plugin-asciidoc.tgz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: ${{ runner.temp }}/textlint-plugin-asciidoc.tgz
+          if-no-files-found: error
+          retention-days: 7
