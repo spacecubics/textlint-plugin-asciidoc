@@ -10,10 +10,25 @@ export function parseSource(source: string): AcdcParseResult {
   const tokens: { masked: string; original: string; link: boolean }[] = [];
   const insertions = new Map<number, number[]>();
   const references: [number, number][] = [];
+  // Definitions and standalone block metadata configure parsing (e.g. cols).
+  // They are not prose: let acdc resolve their attributes normally.
+  const structuralRanges: [number, number][] = [];
+  let continuation = false;
+  for (const match of source.matchAll(/[^\r\n]+(?:\r\n|\n|\r|$)|\r\n|\n|\r/g)) {
+    const line = match[0].replace(/[\r\n]+$/, "");
+    const definition: boolean = continuation || /^:[a-zA-Z0-9_!-]+:/.test(line);
+    if (definition || /^\[[^\r\n]*\][ \t]*$/.test(line))
+      structuralRanges.push([match.index, match.index + match[0].length]);
+    continuation = definition && /(?:\\| \+)[ \t]*$/.test(line);
+  }
   let nextToken = 0xe000;
   const input = source.replace(
-    /\{[a-zA-Z0-9_-]+\\?\}/g,
+    /\{[a-zA-Z0-9_-]+\\?\}|\\[|!]/g,
     (original: string, offset: number) => {
+      if (
+        structuralRanges.some(([start, end]) => start <= offset && offset < end)
+      )
+        return original;
       while (
         nextToken <= 0xf8ff &&
         source.includes(String.fromCharCode(nextToken))
@@ -24,7 +39,12 @@ export function parseSource(source: string): AcdcParseResult {
           "Too many attribute references for source-preserving parsing",
         );
       const masked = String.fromCharCode(nextToken++).repeat(original.length);
-      const escaped = source[offset - 1] === "\\" || original.endsWith("\\}");
+      // Table separator escapes are also removed before acdc computes inline
+      // ranges. Protect them without treating them as attribute references.
+      const escaped =
+        original.startsWith("\\") ||
+        source[offset - 1] === "\\" ||
+        original.endsWith("\\}");
       // A bare attribute target needs link syntax even when expansion is disabled.
       const link =
         !escaped &&

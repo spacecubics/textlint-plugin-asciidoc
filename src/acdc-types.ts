@@ -38,9 +38,15 @@ export interface AcdcDocument extends AcdcNode {
 }
 
 export interface AcdcTableRow {
-  columns: { content: AcdcNode[]; colspan?: number; rowspan?: number }[];
+  columns: {
+    content: AcdcNode[];
+    colspan?: number;
+    rowspan?: number;
+    style?: string;
+  }[];
 }
 export interface AcdcTable {
+  location: AcdcLocation;
   header?: AcdcTableRow | null;
   rows: AcdcTableRow[];
   footer?: AcdcTableRow | null;

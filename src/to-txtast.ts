@@ -8,11 +8,13 @@ import type {
   TxtNode,
   TxtParagraphNode,
   TxtParentNode,
+  TxtTableCellNode,
   TxtTableRowNode,
 } from "@textlint/ast-node-types";
 import type { AcdcParseResult } from "./acdc.js";
 import type { AcdcNode, AcdcTableRow } from "./acdc-types.js";
 import { Source } from "./source.js";
+import { tableCellRanges } from "./source-table.js";
 
 export function toTxtAST(
   text: string,
@@ -191,14 +193,18 @@ export function toTxtAST(
     if (!title.length || !Number.isInteger(level) || level < 0 || level > 5) {
       throw new Error("Unsupported heading level or empty title");
     }
+    const children = title.flatMap(inlines);
+    const lineStart = source.lineStart(title[0].location[0].line);
+    const prefix = text.slice(lineStart, children[0].range[0]);
+    const marker = /=+[ \t]+$/.exec(prefix);
     return {
       type: "Header",
       depth: (level + 1) as TxtHeaderNode["depth"],
       ...source.span(
-        source.lineStart(title[0].location[0].line),
-        source.lineEnd(title[title.length - 1].location[1].line),
+        marker ? children[0].range[0] - marker[0].length : lineStart,
+        children[children.length - 1].range[1],
       ),
-      children: title.flatMap(inlines),
+      children,
     };
   }
   function paragraph(nodes: AcdcNode[]): TxtParagraphNode {
@@ -226,21 +232,31 @@ export function toTxtAST(
       ],
     };
   }
-  function tableRow(row: AcdcTableRow): TxtTableRowNode {
-    const children = row.columns.map((column) => {
-      if (
-        column.content.length !== 1 ||
-        column.content[0].name !== "paragraph" ||
-        !column.content[0].inlines?.length ||
-        (column.colspan ?? 1) !== 1 ||
-        (column.rowspan ?? 1) !== 1
-      ) {
-        throw new Error(
-          "Unsupported empty, merged, or block-content table cell",
-        );
+  function tableRow(
+    row: AcdcTableRow,
+    ranges: [number, number][],
+  ): TxtTableRowNode {
+    const children: TxtTableCellNode[] = row.columns.map((column, index) => {
+      const span = source.span(...ranges[index]);
+      let children: TxtTableCellNode["children"] = [];
+      if (column.style === "literal" || column.style === "monospace") {
+        if (span.raw) children = [{ type: "Code", ...span, value: span.raw }];
+      } else if (column.content[0]?.inlines?.length) {
+        children = column.content[0].inlines.flatMap(inlines);
+        if (column.style === "strong" || column.style === "emphasis")
+          children = [
+            {
+              type: column.style === "strong" ? "Strong" : "Emphasis",
+              ...span,
+              children,
+            },
+          ];
       }
-      const cell = paragraph(column.content[0].inlines);
-      return { ...cell, type: "TableCell" as const };
+      for (const child of children) {
+        if (child.range[0] < span.range[0] || child.range[1] > span.range[1])
+          throw new Error("Table cell content is outside its original source");
+      }
+      return { type: "TableCell", ...span, children };
     });
     if (!children.length) throw new Error("Unsupported empty table row");
     return {
@@ -329,15 +345,78 @@ export function toTxtAST(
       typeof node.content !== "string"
     ) {
       const content = node.content;
+      const rows = [
+        ...(content.header ? [content.header] : []),
+        ...content.rows,
+        ...(content.footer ? [content.footer] : []),
+      ];
+      const ranges = tableCellRanges(source, node, content);
+      const columns = rows.flatMap((row) => row.columns);
+      if (ranges.length !== columns.length)
+        throw new Error(
+          "Table cells cannot be mapped one-to-one to the source",
+        );
+      const complex = columns.some(
+        (column) =>
+          column.content.length > 1 ||
+          column.content.some((child) => child.name !== "paragraph"),
+      );
+      if (complex) {
+        // Standard TxtAST TableCell accepts only inline content. Keep block
+        // boundaries and code semantics by exposing complex tables as blocks.
+        return columns.flatMap((column, index) => {
+          const span = source.span(...ranges[index]);
+          if (column.style === "literal" || column.style === "monospace")
+            return span.raw
+              ? [
+                  {
+                    type: "CodeBlock" as const,
+                    ...span,
+                    value: span.raw,
+                    lang: null,
+                  },
+                ]
+              : [];
+          return column.content.flatMap(block).map((child) => {
+            if (
+              child.range[0] < span.range[0] ||
+              child.range[1] > span.range[1]
+            )
+              throw new Error("Table block is outside its original cell");
+            if (
+              child.type === "Paragraph" &&
+              (column.style === "strong" || column.style === "emphasis")
+            )
+              return {
+                ...child,
+                children: [
+                  {
+                    type:
+                      column.style === "strong"
+                        ? ("Strong" as const)
+                        : ("Emphasis" as const),
+                    ...source.span(...child.range),
+                    children: child.children,
+                  },
+                ],
+              };
+            return child;
+          });
+        });
+      }
+      let cursor = 0;
       return [
         {
           type: "Table",
           ...source.location(node.location),
-          children: [
-            ...(content.header ? [content.header] : []),
-            ...content.rows,
-            ...(content.footer ? [content.footer] : []),
-          ].map(tableRow),
+          children: rows.map((row) => {
+            const result = tableRow(
+              row,
+              ranges.slice(cursor, cursor + row.columns.length),
+            );
+            cursor += row.columns.length;
+            return result;
+          }),
         },
       ];
     }

@@ -418,8 +418,18 @@ describe("block containers and tables", () => {
       text.replaceAll("teh", "the"),
     );
   });
-  it("does not invent positions for empty table cells", () => {
-    expect(() => parse("|===\n| |Text\n|===")).toThrow(/table cell/);
+  it("anchors empty table cells after their separator", () => {
+    expect(parse("|===\n| |Text\n|===").children[0]).toMatchObject({
+      type: "Table",
+      children: [
+        {
+          children: [
+            { type: "TableCell", raw: "", range: [6, 6], children: [] },
+            { type: "TableCell", raw: "Text", range: [8, 12] },
+          ],
+        },
+      ],
+    });
   });
   it("maps thematic breaks", () => {
     expect(parse("***").children[0]).toMatchObject({
