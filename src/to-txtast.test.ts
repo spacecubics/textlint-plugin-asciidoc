@@ -195,3 +195,47 @@ describe("headings", () => {
     });
   });
 });
+
+describe("code", () => {
+  it.each(["`teh`", "``teh``"])("keeps %s out of prose rules", async (code) => {
+    const text = `Use ${code} here.`;
+    const ast = parse(text);
+    assertAST({ ...ast });
+    expect(ast.children[0]).toMatchObject({
+      children: [
+        { type: "Str" },
+        { type: "Code", raw: code, value: "teh" },
+        { type: "Str" },
+      ],
+    });
+    expect(
+      (await new TextlintKernel().lintText(text, options)).messages,
+    ).toEqual([]);
+  });
+  it.each(["----", "...."])(
+    "excludes a %s block but fixes subsequent prose",
+    async (delimiter) => {
+      const text = `${delimiter}\nteh\n${delimiter}\n\nRead teh manual.`;
+      const ast = parse(text);
+      assertAST({ ...ast });
+      expect(ast.children[0]).toMatchObject({
+        type: "CodeBlock",
+        value: "teh",
+      });
+      const kernel = new TextlintKernel();
+      expect((await kernel.lintText(text, options)).messages).toHaveLength(1);
+      expect((await kernel.fixText(text, options)).output).toBe(
+        `${delimiter}\nteh\n${delimiter}\n\nRead the manual.`,
+      );
+    },
+  );
+  it("preserves a source block's language", () => {
+    expect(
+      parse("[source,js]\n----\nconst value = 1;\n----").children[0],
+    ).toMatchObject({
+      type: "CodeBlock",
+      lang: "js",
+      value: "const value = 1;",
+    });
+  });
+});

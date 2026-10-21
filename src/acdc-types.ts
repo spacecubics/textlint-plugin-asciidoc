@@ -15,6 +15,11 @@ export interface AcdcNode {
   variant?: string;
   title?: AcdcNode[];
   level?: number;
+  metadata?: {
+    style?: string;
+    attributes?: Record<string, unknown>;
+    title?: AcdcNode[];
+  };
   inlines?: AcdcNode[];
   blocks?: AcdcNode[];
 }

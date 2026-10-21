@@ -23,6 +23,15 @@ export function toTxtAST(
   ) {
     throw new Error("Unsupported acdc document header or attributes");
   }
+  function codeValue(nodes: AcdcNode[]): string {
+    return nodes
+      .map((node) => {
+        if (node.name !== "text" || typeof node.value !== "string")
+          throw new Error(`Unsupported code content: ${node.name}`);
+        return node.value;
+      })
+      .join("");
+  }
   function inline(node: AcdcNode): TxtParagraphNode["children"][number] {
     if (
       node.name === "span" &&
@@ -33,6 +42,13 @@ export function toTxtAST(
         type: node.variant === "strong" ? "Strong" : "Emphasis",
         ...source.location(node.location),
         children: node.inlines.map(inline),
+      };
+    }
+    if (node.name === "span" && node.variant === "code" && node.inlines) {
+      return {
+        type: "Code",
+        ...source.location(node.location),
+        value: codeValue(node.inlines),
       };
     }
     if (node.name === "break")
@@ -67,6 +83,17 @@ export function toTxtAST(
   }
   type Block = TxtBlockQuoteNode["children"][number];
   function block(node: AcdcNode): Block[] {
+    if (node.name === "listing" || node.name === "literal") {
+      const language = node.metadata?.attributes?.language;
+      return [
+        {
+          type: "CodeBlock",
+          ...source.location(node.location),
+          value: codeValue(node.inlines ?? []),
+          lang: typeof language === "string" ? language : null,
+        },
+      ];
+    }
     if (
       (node.name === "section" || node.name === "heading") &&
       node.title &&
