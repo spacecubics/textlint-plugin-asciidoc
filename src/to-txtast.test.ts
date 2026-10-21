@@ -157,3 +157,41 @@ describe("inline emphasis", () => {
     });
   });
 });
+
+describe("headings", () => {
+  it("flattens sections while keeping heading depth and title ranges", async () => {
+    const text =
+      "= Manual\n\n== Read *teh* guide\n\nText.\n\n=== Details\n\nMore.";
+    const ast = parse(text);
+    assertAST({ ...ast });
+    expect(ast.children.map((node) => node.type)).toEqual([
+      "Header",
+      "Header",
+      "Paragraph",
+      "Header",
+      "Paragraph",
+    ]);
+    expect(ast.children[0]).toMatchObject({
+      depth: 1,
+      raw: "= Manual",
+      range: [0, 8],
+    });
+    expect(ast.children[1]).toMatchObject({
+      depth: 2,
+      raw: "== Read *teh* guide",
+      loc: { end: { line: 3, column: 19 } },
+    });
+    expect(ast.children[3]).toMatchObject({ depth: 3, raw: "=== Details" });
+    expect((await new TextlintKernel().fixText(text, options)).output).toBe(
+      text.replace("teh", "the"),
+    );
+  });
+  it("converts discrete headings without consuming their metadata", () => {
+    expect(parse("[discrete]\n== Heading\n\nText.").children[0]).toMatchObject({
+      type: "Header",
+      depth: 2,
+      raw: "== Heading",
+      range: [11, 21],
+    });
+  });
+});

@@ -11,6 +11,14 @@ export class Source {
     }
     this.lines.push({ start, text: text.slice(start) });
   }
+  lineStart(line: number) {
+    const row = this.lines[line - 1];
+    if (!row) throw new Error(`Invalid source line: ${line}`);
+    return row.start;
+  }
+  lineEnd(line: number) {
+    return this.lineStart(line) + this.lines[line - 1].text.length;
+  }
   offset(point: AcdcPosition, end = false): number {
     const line = this.lines[point.line - 1];
     const chars = line && Array.from(line.text);

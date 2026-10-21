@@ -1,5 +1,7 @@
 import type {
+  TxtBlockQuoteNode,
   TxtDocumentNode,
+  TxtHeaderNode,
   TxtParagraphNode,
 } from "@textlint/ast-node-types";
 import type { AcdcParseResult } from "./acdc.js";
@@ -17,7 +19,6 @@ export function toTxtAST(
   const document = result.document;
   if (
     document.name !== "document" ||
-    document.header ||
     Object.keys(document.attributes ?? {}).length
   ) {
     throw new Error("Unsupported acdc document header or attributes");
@@ -50,19 +51,49 @@ export function toTxtAST(
     }
     return { type: "Str", ...span, value: span.raw };
   }
-  function block(node: AcdcNode): TxtParagraphNode {
+  function heading(title: AcdcNode[], level: number): TxtHeaderNode {
+    if (!title.length || !Number.isInteger(level) || level < 0 || level > 5) {
+      throw new Error("Unsupported heading level or empty title");
+    }
+    return {
+      type: "Header",
+      depth: (level + 1) as TxtHeaderNode["depth"],
+      ...source.span(
+        source.lineStart(title[0].location[0].line),
+        source.lineEnd(title[title.length - 1].location[1].line),
+      ),
+      children: title.map(inline),
+    };
+  }
+  type Block = TxtBlockQuoteNode["children"][number];
+  function block(node: AcdcNode): Block[] {
+    if (
+      (node.name === "section" || node.name === "heading") &&
+      node.title &&
+      node.level !== undefined
+    ) {
+      return [
+        heading(node.title, node.level),
+        ...(node.blocks ?? []).flatMap(block),
+      ];
+    }
     if (node.name !== "paragraph" || !node.inlines) {
       throw new Error(`Unsupported acdc block: ${node.name}`);
     }
-    return {
-      type: "Paragraph",
-      ...source.location(node.location),
-      children: node.inlines.map(inline),
-    };
+    return [
+      {
+        type: "Paragraph",
+        ...source.location(node.location),
+        children: node.inlines.map(inline),
+      },
+    ];
   }
   return {
     type: "Document",
     ...source.span(0, text.length),
-    children: (document.blocks ?? []).map(block),
+    children: [
+      ...(document.header ? [heading(document.header.title, 0)] : []),
+      ...(document.blocks ?? []).flatMap(block),
+    ],
   };
 }

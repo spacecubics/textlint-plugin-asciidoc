@@ -13,11 +13,13 @@ export interface AcdcNode {
   location: AcdcLocation;
   value?: string;
   variant?: string;
+  title?: AcdcNode[];
+  level?: number;
   inlines?: AcdcNode[];
   blocks?: AcdcNode[];
 }
 export interface AcdcDocument extends AcdcNode {
   name: "document";
-  header?: unknown;
+  header?: { title: AcdcNode[]; location: AcdcLocation; authors?: unknown[] };
   attributes?: Record<string, unknown>;
 }
