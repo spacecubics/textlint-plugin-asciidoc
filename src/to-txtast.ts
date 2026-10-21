@@ -41,6 +41,8 @@ export function toTxtAST(
   function codeValue(nodes: AcdcNode[]): string {
     return nodes
       .map((node) => {
+        if (node.name === "callout_reference")
+          return source.location(node.location).raw;
         if (
           !["text", "raw"].includes(node.name) ||
           typeof node.value !== "string"
@@ -183,12 +185,14 @@ export function toTxtAST(
     });
   }
   function sourceInlines(node: AcdcNode): TxtParagraphNode["children"] {
-    // TxtAST has no footnote or sub/superscript node. Preserve their prose
+    if (node.name === "indexterm" && node.visible && node.term?.length)
+      return node.term.flatMap(inlines);
+    // TxtAST has no footnote, mark or sub/superscript node. Preserve their prose
     // at its original ranges without pretending the contents are emphasis.
     if (
       node.name === "footnote" ||
       (node.name === "span" &&
-        ["subscript", "superscript"].includes(node.variant ?? ""))
+        ["subscript", "superscript", "mark"].includes(node.variant ?? ""))
     ) {
       if (node.inlines?.length) return node.inlines.flatMap(inlines);
       const span = source.location(node.location);
@@ -478,7 +482,7 @@ export function toTxtAST(
     if (
       node.name === "list" &&
       node.items &&
-      (node.variant === "ordered" || node.variant === "unordered")
+      ["ordered", "unordered", "callout"].includes(node.variant ?? "")
     ) {
       const ordered = node.variant === "ordered";
       const start = Number(

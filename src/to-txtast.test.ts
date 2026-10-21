@@ -70,8 +70,7 @@ describe("plain text", () => {
       "Read the manual.",
     );
   });
-  it("rejects unsupported syntax and parser recovery", () => {
-    expect(() => parse("A #marked# word.")).toThrow(/Unsupported/);
+  it("rejects parser recovery", () => {
     expect(() => parse("----\nUnclosed")).toThrow(/diagnostics/);
   });
 });

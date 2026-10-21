@@ -244,3 +244,25 @@ describe("prose immediately following a title", () => {
     await checkFix(text, text.replace("Read teh", "Read the"));
   });
 });
+
+describe("additional prose syntax", () => {
+  it.each(["\n", "\r\n"])("preserves prose and fixes with %j", async (eol) => {
+    await checkFix(
+      [
+        "😀 Before teh #marked teh# and [.red]#**teh** text#.",
+        "",
+        "A visible ((teh term)) after teh.",
+        "",
+        "[source]",
+        "----",
+        "code <1>",
+        "----",
+        "<1> Explain **teh** value.",
+        "+",
+        "Another teh paragraph.",
+        "",
+        "After teh.",
+      ].join(eol),
+    );
+  });
+});

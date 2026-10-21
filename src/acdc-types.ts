@@ -12,6 +12,8 @@ export interface AcdcNode {
   type: string;
   location: AcdcLocation;
   value?: string;
+  visible?: boolean;
+  term?: AcdcNode[];
   target?: { type: string; value: string } | string;
   source?: { type: string; value: string };
   variant?: string;
