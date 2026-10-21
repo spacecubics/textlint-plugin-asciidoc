@@ -69,7 +69,7 @@ describe("plain text", () => {
     );
   });
   it("rejects unsupported syntax and parser recovery", () => {
-    expect(() => parse("A *strong* word.")).toThrow(/Unsupported/);
+    expect(() => parse("A #marked# word.")).toThrow(/Unsupported/);
     expect(() => parse("----\nUnclosed")).toThrow(/diagnostics/);
   });
 });
@@ -120,4 +120,40 @@ it("maps an explicit line break without moving following text", async () => {
   expect((await new TextlintKernel().fixText(text, options)).output).toBe(
     "First. +\nRead the manual.",
   );
+});
+
+describe("inline emphasis", () => {
+  it.each(["*teh*", "**teh**", "_teh_", "__teh__", "*a _teh_ word*"])(
+    "preserves markup while fixing %s",
+    async (markup) => {
+      const text = `Read ${markup} manual.`;
+      const ast = parse(text);
+      assertAST({ ...ast });
+      expect((await new TextlintKernel().fixText(text, options)).output).toBe(
+        text.replace("teh", "the"),
+      );
+    },
+  );
+  it("keeps nested emphasis and positions", () => {
+    const ast = parse("A *bold _word_*.");
+    expect(ast.children[0]).toMatchObject({
+      children: [
+        { type: "Str", value: "A " },
+        {
+          type: "Strong",
+          raw: "*bold _word_*",
+          range: [2, 15],
+          children: [
+            { type: "Str", value: "bold " },
+            {
+              type: "Emphasis",
+              raw: "_word_",
+              children: [{ type: "Str", value: "word", range: [9, 13] }],
+            },
+          ],
+        },
+        { type: "Str", value: "." },
+      ],
+    });
+  });
 });

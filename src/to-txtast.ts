@@ -1,8 +1,6 @@
 import type {
-  TxtBreakNode,
   TxtDocumentNode,
   TxtParagraphNode,
-  TxtStrNode,
 } from "@textlint/ast-node-types";
 import type { AcdcParseResult } from "./acdc.js";
 import type { AcdcNode } from "./acdc-types.js";
@@ -24,7 +22,18 @@ export function toTxtAST(
   ) {
     throw new Error("Unsupported acdc document header or attributes");
   }
-  function inline(node: AcdcNode): TxtStrNode | TxtBreakNode {
+  function inline(node: AcdcNode): TxtParagraphNode["children"][number] {
+    if (
+      node.name === "span" &&
+      node.inlines &&
+      (node.variant === "strong" || node.variant === "emphasis")
+    ) {
+      return {
+        type: node.variant === "strong" ? "Strong" : "Emphasis",
+        ...source.location(node.location),
+        children: node.inlines.map(inline),
+      };
+    }
     if (node.name === "break")
       return { type: "Break", ...source.location(node.location) };
     if (node.name !== "text" || typeof node.value !== "string") {

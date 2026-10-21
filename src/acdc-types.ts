@@ -12,6 +12,7 @@ export interface AcdcNode {
   type: string;
   location: AcdcLocation;
   value?: string;
+  variant?: string;
   inlines?: AcdcNode[];
   blocks?: AcdcNode[];
 }
