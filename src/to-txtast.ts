@@ -590,6 +590,35 @@ export function toTxtAST(
       },
     ];
   }
+  type Content = TxtParentNode["children"][number];
+  function containComment(
+    node: Content,
+    comment: TxtCommentNode,
+    prepend: boolean,
+  ): Content {
+    const parent = node as TxtParentNode;
+    const children = [...parent.children];
+    const span = source.span(
+      Math.min(node.range[0], comment.range[0]),
+      Math.max(node.range[1], comment.range[1]),
+    );
+    if (node.type === "TableRow") {
+      const index = prepend ? 0 : children.length - 1;
+      children[index] = containComment(children[index], comment, prepend);
+    } else {
+      const child: Content =
+        node.type === "ListItem"
+          ? {
+              type: "Paragraph",
+              ...source.span(...comment.range),
+              children: [comment],
+            }
+          : comment;
+      if (prepend) children.unshift(child);
+      else children.push(child);
+    }
+    return { ...node, ...span, children } as Content;
+  }
   function restoreCommentGaps<T extends TxtNode>(node: T): T {
     if (!("children" in node)) return node;
     const parent = node as T & TxtParentNode;
@@ -598,7 +627,8 @@ export function toTxtAST(
       .sort((a, b) => a.range[0] - b.range[0]);
     const restored: TxtParentNode["children"][number][] = [];
     let cursor = node.range[0];
-    for (const child of [...children, null]) {
+    for (let child of [...children, null]) {
+      const leadingComments: TxtCommentNode[] = [];
       const end = child?.range[0] ?? node.range[1];
       const gap = source.span(cursor, end);
       for (const match of gap.raw.matchAll(/^\/\/[^\r\n]*/gm)) {
@@ -610,8 +640,16 @@ export function toTxtAST(
           ...source.span(start, start + match[0].length),
           value: match[0].slice(2),
         };
-        if (["List", "Table", "TableRow"].includes(node.type))
-          throw new Error(`Unsupported comment between ${node.type} children`);
+        if (["List", "Table", "TableRow"].includes(node.type)) {
+          // These containers cannot directly contain Comment. Extend an
+          // adjacent item/cell to include the original gap, without adding
+          // a fictitious item or changing the comment's source position.
+          if (restored.length) {
+            const index = restored.length - 1;
+            restored[index] = containComment(restored[index], comment, false);
+          } else leadingComments.push(comment);
+          continue;
+        }
         restored.push(
           node.type === "BlockQuote" || node.type === "ListItem"
             ? {
@@ -623,6 +661,8 @@ export function toTxtAST(
         );
       }
       if (child) {
+        for (const comment of leadingComments.reverse())
+          child = containComment(child, comment, true);
         restored.push(child);
         cursor = child.range[1];
       }

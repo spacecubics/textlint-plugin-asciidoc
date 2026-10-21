@@ -150,3 +150,25 @@ describe("comments omitted from the acdc ASG", () => {
     );
   });
 });
+
+describe("comments between container children", () => {
+  it.each([
+    "* teh\n// textlint-disable typo\n* teh\n// textlint-enable typo\n* teh",
+    '[cols="1"]\n|===\n// textlint-disable typo\n|teh\n// textlint-enable typo\n|teh\n|===',
+    '[cols="1,1"]\n|===\n|teh\n// textlint-disable typo\n|teh\n|teh\n// textlint-enable typo\n|teh\n|===',
+  ])("preserves filtering within %s", async (sample) => {
+    for (const eol of ["\n", "\r\n"]) {
+      const text = sample.replaceAll("\n", eol);
+      assertAST({ ...parse(text) });
+      const expected = text.replace(/teh/g, (word, offset) =>
+        offset > text.indexOf("textlint-disable") &&
+        offset < text.indexOf("textlint-enable")
+          ? word
+          : "the",
+      );
+      expect((await new TextlintKernel().fixText(text, options)).output).toBe(
+        expected,
+      );
+    }
+  });
+});

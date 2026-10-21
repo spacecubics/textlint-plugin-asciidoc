@@ -316,3 +316,28 @@ describe("opaque unsupported elements", () => {
     );
   });
 });
+
+describe("comment gap source positions", () => {
+  it.each(["\n", "\r\n"])("keeps containers ordered with %j", async (eol) => {
+    await checkFix(
+      [
+        "😀 Before teh.",
+        "",
+        "* teh",
+        "// first comment",
+        "// second comment",
+        "* teh",
+        "",
+        '[cols="1"]',
+        "|===",
+        "// leading comment",
+        "|teh",
+        "// middle comment",
+        "|teh",
+        "|===",
+        "",
+        "After teh.",
+      ].join(eol),
+    );
+  });
+});
