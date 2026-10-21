@@ -12,7 +12,7 @@ export interface AcdcNode {
   type: string;
   location: AcdcLocation;
   value?: string;
-  target?: { type: string; value: string };
+  target?: { type: string; value: string } | string;
   source?: { type: string; value: string };
   variant?: string;
   title?: AcdcNode[];

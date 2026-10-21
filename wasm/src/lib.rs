@@ -10,9 +10,19 @@ pub fn parse_asciidoc(source: &str) -> Result<String, JsError> {
     let parsed =
         acdc_parser::parse(source, &options).map_err(|error| JsError::new(&error.to_string()))?;
     let warnings: Vec<String> = parsed.warnings().iter().map(ToString::to_string).collect();
+    let warning_kinds: Vec<&str> = parsed
+        .warnings()
+        .iter()
+        .map(|warning| match warning.kind {
+            acdc_parser::WarningKind::UnresolvedReference { .. } => "unresolved-reference",
+            acdc_parser::WarningKind::NonStandardAuthorLine { .. } => "non-standard-author-line",
+            _ => "other",
+        })
+        .collect();
     let result = serde_json::json!({
         "document": parsed.document(),
         "warnings": warnings,
+        "warningKinds": warning_kinds,
         "sourceRecovery": parsed.source_recovery().is_some(),
     });
     serde_json::to_string(&result).map_err(|error| JsError::new(&error.to_string()))

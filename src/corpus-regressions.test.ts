@@ -92,3 +92,23 @@ describe("newlines between inline nodes", () => {
     );
   });
 });
+
+describe("cross references", () => {
+  it.each([
+    "Read xref:page.adoc[teh label].",
+    "Read xref:component:module:page.adoc[**teh** label].",
+    "Read <<missing,teh label>>.",
+    "[[id]]\nRead <<id,teh label>>.",
+    "Read [[id]]teh text.",
+    "* xref:page.adoc[teh label]\n* xref:other.adoc[teh label]",
+  ])("lints source labels in %j", async (text) => {
+    await checkFix(text);
+  });
+  it("keeps unlabeled targets out of prose rules", async () => {
+    const text = "Read xref:teh.adoc[] and <<teh>> and [[teh]]teh text.";
+    await checkFix(text, text.replace("teh text", "the text"));
+  });
+  it("still rejects parser recovery", () => {
+    expect(() => parse("----\nUnclosed")).toThrow(/diagnostics/);
+  });
+});

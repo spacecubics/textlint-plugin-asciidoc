@@ -20,8 +20,11 @@ export function toTxtAST(
   text: string,
   result: AcdcParseResult,
 ): TxtDocumentNode {
-  if (result.sourceRecovery || result.warnings.length) {
-    throw new Error(`acdc diagnostics: ${result.warnings.join("; ")}`);
+  const fatalWarnings = result.warnings.filter(
+    (_, index) => result.warningKinds?.[index] !== "unresolved-reference",
+  );
+  if (result.sourceRecovery || fatalWarnings.length) {
+    throw new Error(`acdc diagnostics: ${fatalWarnings.join("; ")}`);
   }
   const source = new Source(text);
   const document = result.document;
@@ -42,7 +45,8 @@ export function toTxtAST(
   }
   function image(node: AcdcNode): TxtImageNode {
     const target = node.target ?? node.source;
-    if (!target) throw new Error("Image target is missing");
+    if (!target || typeof target === "string")
+      throw new Error("Image target is missing");
     const alt = node.metadata?.attributes?.alt;
     return {
       type: "Image",
@@ -71,10 +75,28 @@ export function toTxtAST(
       };
     }
     if (node.name === "image") return image(node);
+    if (node.name === "anchor") {
+      const span = source.location(node.location);
+      return { type: "Code", ...span, value: span.raw };
+    }
+    if (node.name === "xref" && typeof node.target === "string") {
+      const children = (node.inlines ?? []).flatMap(inlines).map((child) => {
+        if (child.type === "Link")
+          throw new Error("Nested links are unsupported");
+        return child;
+      });
+      return {
+        type: "Link",
+        ...source.location(node.location),
+        url: node.target,
+        children,
+      };
+    }
     if (
       node.name === "ref" &&
       (node.variant === "link" || node.variant === "autolink") &&
-      node.target
+      node.target &&
+      typeof node.target !== "string"
     ) {
       const span = source.location(node.location);
       const children = (node.inlines ?? []).flatMap(inlines).map((child) => {
