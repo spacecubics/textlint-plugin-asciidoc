@@ -1,8 +1,8 @@
 import { parseAsciiDoc as parseWasm } from "../wasm/pkg/acdc_parser.js";
+import type { AcdcDocument } from "./acdc-types.js";
 
 export interface AcdcParseResult {
-  // The upstream ASG will be typed when implementing the TxtAST adapter.
-  document: unknown;
+  document: AcdcDocument;
   warnings: string[];
   sourceRecovery: boolean;
 }

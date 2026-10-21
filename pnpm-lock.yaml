@@ -176,6 +176,12 @@ importers:
       '@biomejs/biome':
         specifier: 2.5.15
         version: 2.5.15
+      '@textlint/ast-tester':
+        specifier: 15.8.0
+        version: 15.8.0
+      '@textlint/kernel':
+        specifier: 15.8.0
+        version: 15.8.0
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2

@@ -23,10 +23,12 @@
     "check": "biome check .",
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "pnpm build:wasm && vitest run"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@textlint/ast-tester": "15.8.0",
+    "@textlint/kernel": "15.8.0",
     "@types/node": "24.19.2",
     "textlint": "15.8.0",
     "typescript": "7.0.2",
