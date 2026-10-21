@@ -239,3 +239,54 @@ describe("code", () => {
     });
   });
 });
+
+describe("links and images", () => {
+  it.each([
+    "https://example.com[Read *teh* guide]",
+    "link:guide.html[Read _teh_ guide]",
+  ])("fixes only the label of %s", async (text) => {
+    const ast = parse(text);
+    assertAST({ ...ast });
+    expect(ast.children[0]).toMatchObject({
+      children: [
+        {
+          type: "Link",
+          children: [
+            { type: "Str", value: "Read " },
+            { children: [{ type: "Str", value: "teh" }] },
+            { type: "Str", value: " guide" },
+          ],
+        },
+      ],
+    });
+    expect((await new TextlintKernel().fixText(text, options)).output).toBe(
+      text.replace("teh", "the"),
+    );
+  });
+  it.each(["https://example.com", "https://example.com[]"])(
+    "maps an unlabelled link %s",
+    (text) => {
+      expect(parse(text).children[0]).toMatchObject({
+        children: [
+          {
+            type: "Link",
+            url: "https://example.com",
+            children: [
+              { type: "Str", raw: "https://example.com", range: [0, 19] },
+            ],
+          },
+        ],
+      });
+    },
+  );
+  it.each(["image:icon.png[Icon]", "image::icon.png[Icon]"])(
+    "maps image URL and alternative text for %s",
+    (text) => {
+      const ast = parse(text);
+      assertAST({ ...ast });
+      expect(ast.children[0]).toMatchObject({
+        children: [{ type: "Image", raw: text, url: "icon.png", alt: "Icon" }],
+      });
+    },
+  );
+});

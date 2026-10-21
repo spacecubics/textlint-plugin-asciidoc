@@ -2,6 +2,7 @@ import type {
   TxtBlockQuoteNode,
   TxtDocumentNode,
   TxtHeaderNode,
+  TxtImageNode,
   TxtParagraphNode,
 } from "@textlint/ast-node-types";
 import type { AcdcParseResult } from "./acdc.js";
@@ -32,6 +33,17 @@ export function toTxtAST(
       })
       .join("");
   }
+  function image(node: AcdcNode): TxtImageNode {
+    const target = node.target ?? node.source;
+    if (!target) throw new Error("Image target is missing");
+    const alt = node.metadata?.attributes?.alt;
+    return {
+      type: "Image",
+      ...source.location(node.location),
+      url: target.value,
+      alt: typeof alt === "string" ? alt : codeValue(node.title ?? []),
+    };
+  }
   function inline(node: AcdcNode): TxtParagraphNode["children"][number] {
     if (
       node.name === "span" &&
@@ -50,6 +62,30 @@ export function toTxtAST(
         ...source.location(node.location),
         value: codeValue(node.inlines),
       };
+    }
+    if (node.name === "image") return image(node);
+    if (
+      node.name === "ref" &&
+      (node.variant === "link" || node.variant === "autolink") &&
+      node.target
+    ) {
+      const span = source.location(node.location);
+      const children = (node.inlines ?? []).map(inline).map((child) => {
+        if (child.type === "Link")
+          throw new Error("Nested links are unsupported");
+        return child;
+      });
+      if (!children.length) {
+        const offset = span.raw.indexOf(node.target.value);
+        if (offset < 0)
+          throw new Error("Transformed link target is unsupported");
+        const targetSpan = source.span(
+          span.range[0] + offset,
+          span.range[0] + offset + node.target.value.length,
+        );
+        children.push({ type: "Str", ...targetSpan, value: targetSpan.raw });
+      }
+      return { type: "Link", ...span, url: node.target.value, children };
     }
     if (node.name === "break")
       return { type: "Break", ...source.location(node.location) };
@@ -83,6 +119,21 @@ export function toTxtAST(
   }
   type Block = TxtBlockQuoteNode["children"][number];
   function block(node: AcdcNode): Block[] {
+    if (
+      node.title?.length &&
+      node.name !== "section" &&
+      node.name !== "heading"
+    )
+      throw new Error("Unsupported block caption");
+    if (node.name === "image") {
+      return [
+        {
+          type: "Paragraph",
+          ...source.location(node.location),
+          children: [image(node)],
+        },
+      ];
+    }
     if (node.name === "listing" || node.name === "literal") {
       const language = node.metadata?.attributes?.language;
       return [
