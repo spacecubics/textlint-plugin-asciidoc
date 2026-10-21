@@ -214,3 +214,33 @@ describe("description lists", () => {
     });
   });
 });
+
+describe("prose immediately following a title", () => {
+  it.each(["\n", "\r\n"])(
+    "recovers a non-standard author line with %j",
+    async (eol) => {
+      const text = [
+        "= Title",
+        "This is **teh** first sentence of a longer paragraph with 😀 text.",
+        "",
+        "Read teh next paragraph.",
+      ].join(eol);
+      const ast = await checkFix(text);
+      expect(ast.children.map((node) => node.type)).toEqual([
+        "Header",
+        "Paragraph",
+        "Paragraph",
+      ]);
+      expect(
+        (await new TextlintKernel().lintText(text, options)).messages.map(
+          (m) => m.line,
+        ),
+      ).toEqual([2, 4]);
+    },
+  );
+  it("preserves a standard author and revision header as metadata", async () => {
+    const text =
+      "= Title\nJane teh <jane@example.com>\nv1.0, 2026-01-01\n\nRead teh text.";
+    await checkFix(text, text.replace("Read teh", "Read the"));
+  });
+});

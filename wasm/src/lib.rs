@@ -23,6 +23,7 @@ pub fn parse_asciidoc(source: &str) -> Result<String, JsError> {
         "document": parsed.document(),
         "warnings": warnings,
         "warningKinds": warning_kinds,
+        "warningLocations": parsed.warnings().iter().map(|warning| warning.source_location().map(|source| &source.location)).collect::<Vec<_>>(),
         "sourceRecovery": parsed.source_recovery().is_some(),
     });
     serde_json::to_string(&result).map_err(|error| JsError::new(&error.to_string()))

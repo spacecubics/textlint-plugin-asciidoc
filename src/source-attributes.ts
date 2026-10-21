@@ -1,5 +1,5 @@
 import { type AcdcParseResult, parseAsciiDoc } from "./acdc.js";
-import type { AcdcPosition } from "./acdc-types.js";
+import type { AcdcNode, AcdcPosition } from "./acdc-types.js";
 
 /** Parse source spelling instead of attribute-expanded prose. acdc 0.11 has
  * no public switch for disabling attribute substitutions throughout a document.
@@ -68,6 +68,53 @@ export function parseSource(source: string): AcdcParseResult {
     },
   );
   const result = parseAsciiDoc(input);
+  const recoveredAuthorLines = new Set<number>();
+  const recoveredWarnings = new Set<number>();
+  for (const [index, kind] of (result.warningKinds ?? []).entries()) {
+    if (kind !== "non-standard-author-line") continue;
+    const line = result.warningLocations?.[index]?.[0].line;
+    if (!line)
+      throw new Error("Missing source location for non-standard author line");
+    if (!recoveredAuthorLines.has(line)) {
+      // A sentence directly after the title can be consumed as an invalid
+      // author line. Parse that original line as prose instead of dropping it.
+      const fragment = parseAsciiDoc(input.split(/\r\n|\r|\n/)[line - 1]);
+      if (fragment.sourceRecovery || fragment.warnings.length)
+        throw new Error(
+          `Cannot parse non-standard author line: ${fragment.warnings.join("; ")}`,
+        );
+      const relocate = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(relocate);
+        if (value && typeof value === "object") {
+          const object = value as Record<string, unknown>;
+          if (typeof object.line === "number" && typeof object.col === "number")
+            return { ...object, line: object.line + line - 1 };
+          return Object.fromEntries(
+            Object.entries(object).map(([key, child]) => [
+              key,
+              relocate(child),
+            ]),
+          );
+        }
+        return value;
+      };
+      result.document.blocks = [
+        ...(result.document.blocks ?? []),
+        ...(relocate(fragment.document.blocks ?? []) as AcdcNode[]),
+      ];
+      recoveredAuthorLines.add(line);
+    }
+    recoveredWarnings.add(index);
+  }
+  result.warnings = result.warnings.filter(
+    (_, index) => !recoveredWarnings.has(index),
+  );
+  result.warningKinds = result.warningKinds?.filter(
+    (_, index) => !recoveredWarnings.has(index),
+  );
+  result.warningLocations = result.warningLocations?.filter(
+    (_, index) => !recoveredWarnings.has(index),
+  );
   const restoreString = (value: string) => {
     for (const token of tokens) {
       if (token.link)
