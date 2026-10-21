@@ -17,7 +17,7 @@ export interface AcdcNode {
   variant?: string;
   title?: AcdcNode[];
   level?: number;
-  items?: AcdcNode[];
+  items?: AcdcListItem[];
   principal?: AcdcNode[];
   marker?: string;
   checked?: boolean;
@@ -30,6 +30,17 @@ export interface AcdcNode {
   };
   inlines?: AcdcNode[];
   blocks?: AcdcNode[];
+}
+export interface AcdcListItem {
+  name?: string;
+  location: AcdcLocation;
+  marker?: string;
+  checked?: boolean;
+  principal?: AcdcNode[];
+  blocks?: AcdcNode[];
+  term?: AcdcNode[];
+  principal_text?: AcdcNode[];
+  description?: AcdcNode[];
 }
 export interface AcdcDocument extends AcdcNode {
   name: "document";

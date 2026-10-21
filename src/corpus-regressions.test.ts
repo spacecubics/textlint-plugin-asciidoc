@@ -186,3 +186,31 @@ describe("footnotes and script text", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("description lists", () => {
+  it.each([
+    "teh term:: teh definition",
+    "teh term::\nteh definition\n\nOther:: teh description",
+    "teh term:: teh definition\n+\nAnother teh paragraph.",
+    "teh term:: first\nNested::: teh definition",
+    "teh term::\n+\n* teh item\n* Other",
+    "|===\na|teh term:: teh definition\n|===",
+  ])("lints terms and descriptions in %j", async (text) => {
+    await checkFix(text);
+    await checkFix(text.replaceAll("\n", "\r\n"));
+  });
+  it("keeps terms and definitions in separate paragraphs", () => {
+    expect(parse("Term:: Definition").children[0]).toMatchObject({
+      type: "List",
+      children: [
+        {
+          type: "ListItem",
+          children: [
+            { type: "Paragraph", raw: "Term" },
+            { type: "Paragraph", raw: "Definition" },
+          ],
+        },
+      ],
+    });
+  });
+});

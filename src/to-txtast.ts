@@ -12,7 +12,7 @@ import type {
   TxtTableRowNode,
 } from "@textlint/ast-node-types";
 import type { AcdcParseResult } from "./acdc.js";
-import type { AcdcNode, AcdcTableRow } from "./acdc-types.js";
+import type { AcdcListItem, AcdcNode, AcdcTableRow } from "./acdc-types.js";
 import { Source } from "./source.js";
 import { tableCellRanges } from "./source-table.js";
 
@@ -265,7 +265,7 @@ export function toTxtAST(
       children,
     };
   }
-  function listItem(node: AcdcNode): TxtListItemNode {
+  function listItem(node: AcdcListItem): TxtListItemNode {
     if (node.name !== "listItem")
       throw new Error(`Unsupported list item: ${node.name}`);
     return {
@@ -496,6 +496,42 @@ export function toTxtAST(
           ordered,
           start: ordered ? start : null,
           children: node.items.map(listItem),
+        },
+      ];
+    }
+    if (node.name === "dlist" && node.items?.length) {
+      const children: TxtListItemNode[] = node.items.map((item) => {
+        if (!item.term?.length)
+          throw new Error("Missing description-list term");
+        const children: TxtListItemNode["children"] = [
+          paragraph(item.term),
+          ...(item.principal_text?.length
+            ? [paragraph(item.principal_text)]
+            : []),
+          ...blockChildren(item.description ?? []),
+        ];
+        // acdc 0.11 can overshoot the final line for description lists.
+        // Derive the containing range from the actual term/description nodes.
+        return {
+          type: "ListItem",
+          ...source.span(
+            source.offset(item.location[0]),
+            children[children.length - 1].range[1],
+          ),
+          checked: null,
+          children,
+        };
+      });
+      return [
+        {
+          type: "List",
+          ...source.span(
+            source.offset(node.location[0]),
+            children[children.length - 1].range[1],
+          ),
+          ordered: false,
+          start: null,
+          children,
         },
       ];
     }
