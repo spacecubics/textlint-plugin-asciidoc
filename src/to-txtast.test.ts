@@ -290,3 +290,66 @@ describe("links and images", () => {
     },
   );
 });
+
+describe("lists", () => {
+  it("preserves nested lists and continued paragraphs", async () => {
+    const text = "* First\n** Read teh guide\n* Second\n+\nMore text.";
+    const ast = parse(text);
+    assertAST({ ...ast });
+    expect(ast.children[0]).toMatchObject({
+      type: "List",
+      ordered: false,
+      children: [
+        {
+          type: "ListItem",
+          children: [
+            { type: "Paragraph" },
+            { type: "List", children: [{ type: "ListItem" }] },
+          ],
+        },
+        {
+          type: "ListItem",
+          children: [
+            { type: "Paragraph" },
+            { type: "Paragraph", raw: "More text." },
+          ],
+        },
+      ],
+    });
+    expect((await new TextlintKernel().fixText(text, options)).output).toBe(
+      text.replace("teh", "the"),
+    );
+  });
+  it.each(["[start=3]\n. Three\n. Four", "3. Three\n4. Four"])(
+    "keeps ordered list start: %s",
+    (text) => {
+      expect(parse(text).children[0]).toMatchObject({
+        type: "List",
+        ordered: true,
+        start: 3,
+      });
+    },
+  );
+  it("keeps task states and repeated item locations", async () => {
+    const text = "* [x] teh\n* [ ] teh";
+    expect(parse(text).children[0]).toMatchObject({
+      children: [
+        { checked: true, loc: { start: { line: 1, column: 0 } } },
+        { checked: false, loc: { start: { line: 2, column: 0 } } },
+      ],
+    });
+    const kernel = new TextlintKernel();
+    expect(
+      (await kernel.lintText(text, options)).messages.map((message) => [
+        message.line,
+        message.column,
+      ]),
+    ).toEqual([
+      [1, 7],
+      [2, 7],
+    ]);
+    expect((await kernel.fixText(text, options)).output).toBe(
+      "* [x] the\n* [ ] the",
+    );
+  });
+});

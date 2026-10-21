@@ -3,6 +3,7 @@ import type {
   TxtDocumentNode,
   TxtHeaderNode,
   TxtImageNode,
+  TxtListItemNode,
   TxtParagraphNode,
 } from "@textlint/ast-node-types";
 import type { AcdcParseResult } from "./acdc.js";
@@ -117,8 +118,56 @@ export function toTxtAST(
       children: title.map(inline),
     };
   }
+  function paragraph(nodes: AcdcNode[]): TxtParagraphNode {
+    if (!nodes.length) throw new Error("Missing paragraph content");
+    return {
+      type: "Paragraph",
+      ...source.span(
+        source.offset(nodes[0].location[0]),
+        source.offset(nodes[nodes.length - 1].location[1], true),
+      ),
+      children: nodes.map(inline),
+    };
+  }
+  function listItem(node: AcdcNode): TxtListItemNode {
+    if (node.name !== "listItem")
+      throw new Error(`Unsupported list item: ${node.name}`);
+    return {
+      type: "ListItem",
+      ...source.location(node.location),
+      checked: node.checked ?? null,
+      children: [
+        ...(node.principal?.length ? [paragraph(node.principal)] : []),
+        ...(node.blocks ?? []).flatMap(block),
+      ],
+    };
+  }
   type Block = TxtBlockQuoteNode["children"][number];
   function block(node: AcdcNode): Block[] {
+    if (
+      node.name === "list" &&
+      node.items &&
+      (node.variant === "ordered" || node.variant === "unordered")
+    ) {
+      const ordered = node.variant === "ordered";
+      const start = Number(
+        node.metadata?.attributes?.start ??
+          (/^\d+\./.test(node.items[0]?.marker ?? "")
+            ? Number.parseInt(node.items[0].marker ?? "1", 10)
+            : 1),
+      );
+      if (ordered && (!Number.isSafeInteger(start) || start < 1))
+        throw new Error("Invalid ordered list start");
+      return [
+        {
+          type: "List",
+          ...source.location(node.location),
+          ordered,
+          start: ordered ? start : null,
+          children: node.items.map(listItem),
+        },
+      ];
+    }
     if (
       node.title?.length &&
       node.name !== "section" &&
