@@ -5,7 +5,9 @@ import type {
   TxtHeaderNode,
   TxtImageNode,
   TxtListItemNode,
+  TxtNode,
   TxtParagraphNode,
+  TxtParentNode,
   TxtTableRowNode,
 } from "@textlint/ast-node-types";
 import type { AcdcParseResult } from "./acdc.js";
@@ -53,7 +55,7 @@ export function toTxtAST(
       return {
         type: node.variant === "strong" ? "Strong" : "Emphasis",
         ...source.location(node.location),
-        children: node.inlines.map(inline),
+        children: node.inlines.flatMap(inlines),
       };
     }
     if (node.name === "span" && node.variant === "code" && node.inlines) {
@@ -70,7 +72,7 @@ export function toTxtAST(
       node.target
     ) {
       const span = source.location(node.location);
-      const children = (node.inlines ?? []).map(inline).map((child) => {
+      const children = (node.inlines ?? []).flatMap(inlines).map((child) => {
         if (child.type === "Link")
           throw new Error("Nested links are unsupported");
         return child;
@@ -118,6 +120,48 @@ export function toTxtAST(
     }
     return { type: "Str", ...span, value: span.raw };
   }
+  function inlines(node: AcdcNode): TxtParagraphNode["children"] {
+    if (node.name !== "text" || node.location[0].line === node.location[1].line)
+      return [inline(node)];
+    const span = source.location(node.location);
+    // acdc removes full-line comments inside paragraphs before parsing inlines.
+    // Only reconstruct them if removing precisely these lines reproduces its value.
+    const pattern = /^\/\/[^\r\n]*(?:\r\n|\n|$)/gm;
+    const matches = [...span.raw.matchAll(pattern)];
+    if (!matches.length) return [inline(node)];
+    if (
+      span.raw
+        .replace(pattern, "")
+        .replace(/\r\n/g, "\n")
+        .replace(/[ \t]+(?=\n)/g, "") !== node.value
+    )
+      throw new Error(
+        "Comment removal cannot be mapped to the original source",
+      );
+    const children: TxtParagraphNode["children"][number][] = [];
+    let cursor = span.range[0];
+    for (const match of matches) {
+      const start = span.range[0] + match.index;
+      if (start === span.range[0] && node.location[0].col !== 1)
+        throw new Error("Expected a full-line comment");
+      if (cursor < start) {
+        const part = source.span(cursor, start);
+        children.push({ type: "Str", ...part, value: part.raw });
+      }
+      const raw = match[0].replace(/\r?\n$/, "");
+      children.push({
+        type: "Comment",
+        ...source.span(start, start + raw.length),
+        value: raw.slice(2),
+      });
+      cursor = start + match[0].length;
+    }
+    if (cursor < span.range[1]) {
+      const part = source.span(cursor, span.range[1]);
+      children.push({ type: "Str", ...part, value: part.raw });
+    }
+    return children;
+  }
   function heading(title: AcdcNode[], level: number): TxtHeaderNode {
     if (!title.length || !Number.isInteger(level) || level < 0 || level > 5) {
       throw new Error("Unsupported heading level or empty title");
@@ -129,12 +173,12 @@ export function toTxtAST(
         source.lineStart(title[0].location[0].line),
         source.lineEnd(title[title.length - 1].location[1].line),
       ),
-      children: title.map(inline),
+      children: title.flatMap(inlines),
     };
   }
   function paragraph(nodes: AcdcNode[]): TxtParagraphNode {
     if (!nodes.length) throw new Error("Missing paragraph content");
-    const children = nodes.map(inline);
+    const children = nodes.flatMap(inlines);
     return {
       type: "Paragraph",
       ...source.span(
@@ -187,17 +231,15 @@ export function toTxtAST(
   function blockChildren(nodes: AcdcNode[]): TxtBlockQuoteNode["children"] {
     // TxtAST permits Comment at the root and in phrasing content, but its
     // block-container types require a paragraph around a comment.
-    return nodes
-      .flatMap(block)
-      .map((node) =>
-        node.type === "Comment"
-          ? {
-              type: "Paragraph",
-              ...source.span(...node.range),
-              children: [node],
-            }
-          : node,
-      );
+    return nodes.flatMap(block).map((node) =>
+      node.type === "Comment"
+        ? {
+            type: "Paragraph",
+            ...source.span(...node.range),
+            children: [node],
+          }
+        : node,
+    );
   }
   function block(node: AcdcNode): Block[] {
     if (node.name === "comment") {
@@ -334,16 +376,55 @@ export function toTxtAST(
       {
         type: "Paragraph",
         ...source.location(node.location),
-        children: node.inlines.map(inline),
+        children: node.inlines.flatMap(inlines),
       },
     ];
   }
-  return {
+  function restoreCommentGaps<T extends TxtNode>(node: T): T {
+    if (!("children" in node)) return node;
+    const parent = node as T & TxtParentNode;
+    const children = parent.children
+      .map(restoreCommentGaps)
+      .sort((a, b) => a.range[0] - b.range[0]);
+    const restored: TxtParentNode["children"][number][] = [];
+    let cursor = node.range[0];
+    for (const child of [...children, null]) {
+      const end = child?.range[0] ?? node.range[1];
+      const gap = source.span(cursor, end);
+      for (const match of gap.raw.matchAll(/^\/\/[^\r\n]*/gm)) {
+        const start = cursor + match.index;
+        // A gap may start partway through a source line (e.g. after a title).
+        if (source.position(start).column !== 0) continue;
+        const comment: TxtCommentNode = {
+          type: "Comment",
+          ...source.span(start, start + match[0].length),
+          value: match[0].slice(2),
+        };
+        if (["List", "Table", "TableRow"].includes(node.type))
+          throw new Error(`Unsupported comment between ${node.type} children`);
+        restored.push(
+          node.type === "BlockQuote" || node.type === "ListItem"
+            ? {
+                type: "Paragraph",
+                ...source.span(...comment.range),
+                children: [comment],
+              }
+            : comment,
+        );
+      }
+      if (child) {
+        restored.push(child);
+        cursor = child.range[1];
+      }
+    }
+    return { ...node, children: restored };
+  }
+  return restoreCommentGaps({
     type: "Document",
     ...source.span(0, text.length),
     children: [
       ...(document.header ? [heading(document.header.title, 0)] : []),
       ...(document.blocks ?? []).flatMap(block),
     ],
-  };
+  });
 }

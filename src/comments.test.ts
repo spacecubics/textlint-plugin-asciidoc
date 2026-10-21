@@ -78,3 +78,75 @@ describe("comments", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("comments omitted from the acdc ASG", () => {
+  it.each(["\n", "\r\n"])(
+    "filters adjacent paragraphs with %j line endings",
+    async (eol) => {
+      const text = [
+        "teh",
+        "// textlint-disable typo",
+        "teh",
+        "// textlint-enable typo",
+        "teh",
+      ].join(eol);
+      const ast = parse(text);
+      assertAST({ ...ast });
+      const kernel = new TextlintKernel();
+      expect(
+        (await kernel.lintText(text, options)).messages.map((message) => [
+          message.line,
+          message.column,
+        ]),
+      ).toEqual([
+        [1, 1],
+        [5, 1],
+      ]);
+      expect((await kernel.fixText(text, options)).output).toBe(
+        [
+          "the",
+          "// textlint-disable typo",
+          "teh",
+          "// textlint-enable typo",
+          "the",
+        ].join(eol),
+      );
+    },
+  );
+  it("retains a trailing comment and an empty comment", () => {
+    const ast = parse("Text\n//\n// trailing");
+    assertAST({ ...ast });
+    expect(ast.children.slice(1)).toMatchObject([
+      { type: "Comment", value: "", range: [5, 7] },
+      { type: "Comment", value: " trailing", range: [8, 19] },
+    ]);
+  });
+  it("visits a comment before the document title in source order", async () => {
+    const text =
+      "// textlint-disable\n\n= teh title\n\n// textlint-enable\n\nteh";
+    const ast = parse(text);
+    assertAST({ ...ast });
+    expect(ast.children[0].type).toBe("Comment");
+    expect(
+      (await new TextlintKernel().lintText(text, options)).messages.map(
+        (message) => message.line,
+      ),
+    ).toEqual([7]);
+  });
+  it("restores a trailing directive inside a quote", async () => {
+    const text = "____\nteh\n// textlint-disable\n____\n\nteh";
+    const ast = parse(text);
+    assertAST({ ...ast });
+    expect(
+      (await new TextlintKernel().lintText(text, options)).messages.map(
+        (message) => message.line,
+      ),
+    ).toEqual([2]);
+  });
+  it("preserves ordinary slashes inside prose", async () => {
+    const text = "Read // teh example.";
+    expect((await new TextlintKernel().fixText(text, options)).output).toBe(
+      "Read // the example.",
+    );
+  });
+});
