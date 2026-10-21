@@ -353,3 +353,76 @@ describe("lists", () => {
     );
   });
 });
+
+describe("block containers and tables", () => {
+  it("keeps quotes distinct and exposes admonition and example prose", async () => {
+    const text =
+      "____\nRead teh quote.\n____\n\nNOTE: Read teh note.\n\n====\nRead teh example.\n====";
+    const ast = parse(text);
+    assertAST({ ...ast });
+    expect(ast.children.map((node) => node.type)).toEqual([
+      "BlockQuote",
+      "Paragraph",
+      "Paragraph",
+    ]);
+    expect((await new TextlintKernel().fixText(text, options)).output).toBe(
+      text.replaceAll("teh", "the"),
+    );
+  });
+  it("lints block captions without linting code", async () => {
+    const text = ".Read teh example\n[source,js]\n----\nteh\n----";
+    const ast = parse(text);
+    assertAST({ ...ast });
+    expect(ast.children.map((node) => node.type)).toEqual([
+      "Paragraph",
+      "CodeBlock",
+    ]);
+    expect(ast.children[0].raw).toBe("Read teh example");
+    expect((await new TextlintKernel().fixText(text, options)).output).toBe(
+      text.replace("teh", "the"),
+    );
+  });
+  it("maps headers and repeated cells with distinct fix ranges", async () => {
+    const text = "|===\n|First |Second\n\n|teh |teh\n|===";
+    const ast = parse(text);
+    assertAST({ ...ast });
+    expect(ast.children[0]).toMatchObject({
+      type: "Table",
+      children: [
+        {
+          type: "TableRow",
+          children: [{ type: "TableCell" }, { type: "TableCell" }],
+        },
+        {
+          type: "TableRow",
+          children: [
+            { type: "TableCell", raw: "teh" },
+            { type: "TableCell", raw: "teh" },
+          ],
+        },
+      ],
+    });
+    const kernel = new TextlintKernel();
+    expect(
+      (await kernel.lintText(text, options)).messages.map((message) => [
+        message.line,
+        message.column,
+      ]),
+    ).toEqual([
+      [4, 2],
+      [4, 7],
+    ]);
+    expect((await kernel.fixText(text, options)).output).toBe(
+      text.replaceAll("teh", "the"),
+    );
+  });
+  it("does not invent positions for empty table cells", () => {
+    expect(() => parse("|===\n| |Text\n|===")).toThrow(/table cell/);
+  });
+  it("maps thematic breaks", () => {
+    expect(parse("***").children[0]).toMatchObject({
+      type: "HorizontalRule",
+      range: [0, 3],
+    });
+  });
+});

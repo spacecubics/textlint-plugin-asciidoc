@@ -5,9 +5,10 @@ import type {
   TxtImageNode,
   TxtListItemNode,
   TxtParagraphNode,
+  TxtTableRowNode,
 } from "@textlint/ast-node-types";
 import type { AcdcParseResult } from "./acdc.js";
-import type { AcdcNode } from "./acdc-types.js";
+import type { AcdcNode, AcdcTableRow } from "./acdc-types.js";
 import { Source } from "./source.js";
 
 export function toTxtAST(
@@ -142,8 +143,81 @@ export function toTxtAST(
       ],
     };
   }
+  function tableRow(row: AcdcTableRow): TxtTableRowNode {
+    const children = row.columns.map((column) => {
+      if (
+        column.content.length !== 1 ||
+        column.content[0].name !== "paragraph" ||
+        !column.content[0].inlines?.length ||
+        (column.colspan ?? 1) !== 1 ||
+        (column.rowspan ?? 1) !== 1
+      ) {
+        throw new Error(
+          "Unsupported empty, merged, or block-content table cell",
+        );
+      }
+      const cell = paragraph(column.content[0].inlines);
+      return { ...cell, type: "TableCell" as const };
+    });
+    if (!children.length) throw new Error("Unsupported empty table row");
+    return {
+      type: "TableRow",
+      ...source.span(
+        children[0].range[0],
+        children[children.length - 1].range[1],
+      ),
+      children,
+    };
+  }
   type Block = TxtBlockQuoteNode["children"][number];
   function block(node: AcdcNode): Block[] {
+    if (
+      node.title?.length &&
+      node.name !== "section" &&
+      node.name !== "heading"
+    ) {
+      const titleEnd = node.title[node.title.length - 1].location[1];
+      return [
+        paragraph(node.title),
+        ...block({
+          ...node,
+          title: undefined,
+          location: [{ line: titleEnd.line + 1, col: 1 }, node.location[1]],
+        }),
+      ];
+    }
+    if (node.name === "quote" && node.blocks) {
+      return [
+        {
+          type: "BlockQuote",
+          ...source.location(node.location),
+          children: node.blocks.flatMap(block),
+        },
+      ];
+    }
+    if (
+      ["admonition", "example", "sidebar", "open"].includes(node.name) &&
+      node.blocks
+    ) {
+      return node.blocks.flatMap(block);
+    }
+    if (node.name === "break" && node.variant === "thematic") {
+      return [{ type: "HorizontalRule", ...source.location(node.location) }];
+    }
+    if (node.name === "table" && node.content) {
+      const content = node.content;
+      return [
+        {
+          type: "Table",
+          ...source.location(node.location),
+          children: [
+            ...(content.header ? [content.header] : []),
+            ...content.rows,
+            ...(content.footer ? [content.footer] : []),
+          ].map(tableRow),
+        },
+      ];
+    }
     if (
       node.name === "list" &&
       node.items &&
@@ -168,12 +242,6 @@ export function toTxtAST(
         },
       ];
     }
-    if (
-      node.title?.length &&
-      node.name !== "section" &&
-      node.name !== "heading"
-    )
-      throw new Error("Unsupported block caption");
     if (node.name === "image") {
       return [
         {

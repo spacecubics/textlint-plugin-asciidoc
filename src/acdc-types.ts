@@ -21,6 +21,7 @@ export interface AcdcNode {
   principal?: AcdcNode[];
   marker?: string;
   checked?: boolean;
+  content?: AcdcTable;
   metadata?: {
     style?: string;
     attributes?: Record<string, unknown>;
@@ -33,4 +34,13 @@ export interface AcdcDocument extends AcdcNode {
   name: "document";
   header?: { title: AcdcNode[]; location: AcdcLocation; authors?: unknown[] };
   attributes?: Record<string, unknown>;
+}
+
+export interface AcdcTableRow {
+  columns: { content: AcdcNode[]; colspan?: number; rowspan?: number }[];
+}
+export interface AcdcTable {
+  header?: AcdcTableRow | null;
+  rows: AcdcTableRow[];
+  footer?: AcdcTableRow | null;
 }
