@@ -4,7 +4,19 @@
   "private": true,
   "packageManager": "pnpm@12.9.0",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "check": "biome check .",
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit",
@@ -13,7 +25,12 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@types/node": "24.19.2",
+    "textlint": "15.8.0",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "@textlint/ast-node-types": "15.8.0",
+    "@textlint/types": "15.8.0"
   }
 }

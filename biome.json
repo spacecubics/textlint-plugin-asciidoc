@@ -5,6 +5,7 @@
       "src/**",
       "package.json",
       "tsconfig.json",
+      "tsconfig.build.json",
       "vitest.config.ts",
       "biome.json"
     ]
