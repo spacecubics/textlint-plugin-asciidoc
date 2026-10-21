@@ -1,5 +1,5 @@
 import type { TextlintMessage, TextlintPluginProcessor } from "@textlint/types";
-import { parseAsciiDoc } from "./acdc.js";
+import { parseSource } from "./source-attributes.js";
 import { toTxtAST } from "./to-txtast.js";
 
 export class AsciiDocProcessor implements TextlintPluginProcessor {
@@ -9,7 +9,7 @@ export class AsciiDocProcessor implements TextlintPluginProcessor {
   processor() {
     return {
       preProcess(text: string) {
-        return toTxtAST(text, parseAsciiDoc(text));
+        return toTxtAST(text, parseSource(text));
       },
       postProcess(messages: TextlintMessage[], filePath = "<asciidoc>") {
         return { messages, filePath };

@@ -24,7 +24,10 @@ export function toTxtAST(
   const source = new Source(text);
   const document = result.document;
   if (document.name !== "document") throw new Error("Expected acdc document");
-  if (Object.keys(document.attributes ?? {}).length)
+  if (
+    Object.keys(document.attributes ?? {}).length &&
+    !result.attributeReferences
+  )
     throw new Error("Document attributes require an original-source mapping");
   function codeValue(nodes: AcdcNode[]): string {
     return nodes
@@ -121,6 +124,28 @@ export function toTxtAST(
     return { type: "Str", ...span, value: span.raw };
   }
   function inlines(node: AcdcNode): TxtParagraphNode["children"] {
+    return sourceInlines(node).flatMap((child) => {
+      if (child.type !== "Str") return [child];
+      const children: TxtParagraphNode["children"][number][] = [];
+      let cursor = child.range[0];
+      for (const [start, end] of result.attributeReferences ?? []) {
+        if (start < child.range[0] || end > child.range[1]) continue;
+        if (cursor < start) {
+          const span = source.span(cursor, start);
+          children.push({ type: "Str", ...span, value: span.raw });
+        }
+        const span = source.span(start, end);
+        children.push({ type: "Code", ...span, value: span.raw });
+        cursor = end;
+      }
+      if (cursor < child.range[1]) {
+        const span = source.span(cursor, child.range[1]);
+        children.push({ type: "Str", ...span, value: span.raw });
+      }
+      return children;
+    });
+  }
+  function sourceInlines(node: AcdcNode): TxtParagraphNode["children"] {
     if (node.name !== "text" || node.location[0].line === node.location[1].line)
       return [inline(node)];
     const span = source.location(node.location);
@@ -242,6 +267,7 @@ export function toTxtAST(
     );
   }
   function block(node: AcdcNode): Block[] {
+    if (node.type === "attribute") return [];
     if (node.name === "comment") {
       // Line-comment ends in acdc 0.11 overshoot the original line.
       const span = source.span(

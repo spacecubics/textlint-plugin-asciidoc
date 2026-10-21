@@ -2,7 +2,9 @@ import { test as assertAST } from "@textlint/ast-tester";
 import { TextlintKernel } from "@textlint/kernel";
 import type { TextlintRuleReporter } from "@textlint/types";
 import { describe, expect, it } from "vitest";
+import { parseAsciiDoc } from "./acdc.js";
 import plugin from "./index.js";
+import { toTxtAST } from "./to-txtast.js";
 
 const parse = (text: string) =>
   new plugin.Processor().processor().preProcess(text);
@@ -456,9 +458,12 @@ describe("source substitutions", () => {
     });
   });
   it("rejects attribute expansion without a source mapping", () => {
-    expect(() => parse(":name: World\n\nHello {name}.")).toThrow(
+    const text = ":name: World\n\nHello {name}.";
+    expect(() => toTxtAST(text, parseAsciiDoc(text))).toThrow(
       /attributes require an original-source mapping/,
     );
-    expect(() => parse("Hello {nbsp}world.")).toThrow();
+    expect(() =>
+      toTxtAST("Hello {nbsp}world.", parseAsciiDoc("Hello {nbsp}world.")),
+    ).toThrow();
   });
 });
