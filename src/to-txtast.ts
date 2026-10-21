@@ -41,7 +41,10 @@ export function toTxtAST(
   function codeValue(nodes: AcdcNode[]): string {
     return nodes
       .map((node) => {
-        if (node.name !== "text" || typeof node.value !== "string")
+        if (
+          !["text", "raw"].includes(node.name) ||
+          typeof node.value !== "string"
+        )
           throw new Error(`Unsupported code content: ${node.name}`);
         return node.value;
       })
@@ -60,6 +63,12 @@ export function toTxtAST(
     };
   }
   function inline(node: AcdcNode): TxtParagraphNode["children"][number] {
+    if (node.name === "stem" && typeof node.content === "string")
+      return {
+        type: "Code",
+        ...source.location(node.location),
+        value: node.content,
+      };
     if (
       node.name === "span" &&
       node.inlines &&
@@ -347,6 +356,15 @@ export function toTxtAST(
         }),
       ];
     }
+    if (node.name === "stem" && typeof node.content === "string")
+      return [
+        {
+          type: "CodeBlock",
+          ...source.location(node.location),
+          value: node.content,
+          lang: null,
+        },
+      ];
     if (node.name === "quote" && node.blocks) {
       return [
         {

@@ -147,3 +147,23 @@ describe("file-local includes", () => {
     });
   });
 });
+
+describe("math and verbatim code", () => {
+  it.each([
+    ["Read stem:[teh+x] and teh text.", "Read stem:[teh+x] and the text."],
+    [
+      "[stem]\n++++\nteh + x\n++++\n\nteh text.",
+      "[stem]\n++++\nteh + x\n++++\n\nthe text.",
+    ],
+    ["Use `+teh__name+` and teh.", "Use `+teh__name+` and the."],
+  ])("excludes non-prose content in %j", async (text, expected) => {
+    await checkFix(text, expected);
+  });
+});
+
+it("lints math captions without linting the formula", async () => {
+  await checkFix(
+    ".teh formula\n[stem]\n++++\nteh+x\n++++",
+    ".the formula\n[stem]\n++++\nteh+x\n++++",
+  );
+});
