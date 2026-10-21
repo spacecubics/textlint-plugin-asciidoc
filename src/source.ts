@@ -22,9 +22,20 @@ export class Source {
   offset(point: AcdcPosition, end = false): number {
     const line = this.lines[point.line - 1];
     const chars = line && Array.from(line.text);
-    if (point.file || !chars || point.col < 1 || point.col > chars.length) {
+    const next = this.lines[point.line];
+    if (
+      point.file ||
+      !chars ||
+      !Number.isInteger(point.col) ||
+      point.col < 1 ||
+      point.col > chars.length + (next ? 1 : 0)
+    ) {
       throw new Error(`Invalid acdc source position: ${JSON.stringify(point)}`);
     }
+    // acdc represents a newline at the column after the last scalar. CRLF
+    // is one parser newline but occupies two UTF-16 code units in the source.
+    if (point.col === chars.length + 1)
+      return end ? next.start : line.start + line.text.length;
     return (
       line.start + chars.slice(0, point.col - (end ? 0 : 1)).join("").length
     );
