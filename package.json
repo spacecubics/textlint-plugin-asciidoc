@@ -1,0 +1,19 @@
+{
+  "name": "textlint-plugin-asciidoc",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@12.9.0",
+  "type": "module",
+  "scripts": {
+    "check": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
