@@ -13,10 +13,13 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "wasm/pkg"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "pnpm build:wasm && pnpm build:ts",
+    "build:wasm": "wasm-pack build --target nodejs --mode no-install --out-dir wasm/pkg --out-name acdc_parser --locked",
+    "build:ts": "tsc -p tsconfig.build.json",
     "check": "biome check .",
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit",
