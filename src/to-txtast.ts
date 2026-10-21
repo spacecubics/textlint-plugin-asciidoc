@@ -183,6 +183,17 @@ export function toTxtAST(
     });
   }
   function sourceInlines(node: AcdcNode): TxtParagraphNode["children"] {
+    // TxtAST has no footnote or sub/superscript node. Preserve their prose
+    // at its original ranges without pretending the contents are emphasis.
+    if (
+      node.name === "footnote" ||
+      (node.name === "span" &&
+        ["subscript", "superscript"].includes(node.variant ?? ""))
+    ) {
+      if (node.inlines?.length) return node.inlines.flatMap(inlines);
+      const span = source.location(node.location);
+      return [{ type: "Code", ...span, value: span.raw }];
+    }
     if (node.name !== "text" || node.location[0].line === node.location[1].line)
       return [inline(node)];
     const span = source.location(node.location);

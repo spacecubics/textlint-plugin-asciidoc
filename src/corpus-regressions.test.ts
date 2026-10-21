@@ -167,3 +167,22 @@ it("lints math captions without linting the formula", async () => {
     ".the formula\n[stem]\n++++\nteh+x\n++++",
   );
 });
+
+describe("footnotes and script text", () => {
+  it.each([
+    "Read footnote:[teh note] and teh text.",
+    "Read footnote:note[**teh** note] and footnote:note[].",
+    "A~teh~ and x^teh^.",
+    "|===\n|V~teh~ |footnote:[teh note]\n|===",
+    "😀 footnote:[日本語のteh] and x^teh^.",
+  ])("lints original text in %j", async (text) => {
+    await checkFix(text);
+  });
+  it("does not lint footnote identifiers or duplicate reused notes", async () => {
+    const text = "footnote:teh[teh note] and footnote:teh[].";
+    await checkFix(text, text.replace("[teh note]", "[the note]"));
+    expect(
+      (await new TextlintKernel().lintText(text, options)).messages,
+    ).toHaveLength(1);
+  });
+});
