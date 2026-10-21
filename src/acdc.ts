@@ -7,6 +7,7 @@ export interface AcdcParseResult {
   warningKinds?: string[];
   sourceRecovery: boolean;
   attributeReferences?: [number, number][];
+  sourceDirectives?: [number, number][];
 }
 
 export function parseAsciiDoc(source: string): AcdcParseResult {

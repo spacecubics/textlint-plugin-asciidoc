@@ -10,6 +10,7 @@ export function parseSource(source: string): AcdcParseResult {
   const tokens: { masked: string; original: string; link: boolean }[] = [];
   const insertions = new Map<number, number[]>();
   const references: [number, number][] = [];
+  const directives: [number, number][] = [];
   // Definitions and standalone block metadata configure parsing (e.g. cols).
   // They are not prose: let acdc resolve their attributes normally.
   const structuralRanges: [number, number][] = [];
@@ -23,7 +24,7 @@ export function parseSource(source: string): AcdcParseResult {
   }
   let nextToken = 0xe000;
   const input = source.replace(
-    /\{[a-zA-Z0-9_-]+\\?\}|\\[|!]/g,
+    /^include::[^\r\n]+\[[^\r\n]*\][ \t]*(?=\r?$)|\{[a-zA-Z0-9_-]+\\?\}|\\[|!]/gm,
     (original: string, offset: number) => {
       if (
         structuralRanges.some(([start, end]) => start <= offset && offset < end)
@@ -38,10 +39,14 @@ export function parseSource(source: string): AcdcParseResult {
         throw new Error(
           "Too many attribute references for source-preserving parsing",
         );
-      const masked = String.fromCharCode(nextToken++).repeat(original.length);
+      const masked = String.fromCharCode(nextToken++).repeat(
+        Array.from(original).length,
+      );
+      const directive = original.startsWith("include::");
       // Table separator escapes are also removed before acdc computes inline
       // ranges. Protect them without treating them as attribute references.
       const escaped =
+        directive ||
         original.startsWith("\\") ||
         source[offset - 1] === "\\" ||
         original.endsWith("\\}");
@@ -57,6 +62,7 @@ export function parseSource(source: string): AcdcParseResult {
         insertions.set(line, [...(insertions.get(line) ?? []), col]);
       }
       tokens.push({ masked, original, link });
+      if (directive) directives.push([offset, offset + original.length]);
       if (!escaped) references.push([offset, offset + original.length]);
       return `${link ? "link:" : ""}${masked}`;
     },
@@ -95,5 +101,6 @@ export function parseSource(source: string): AcdcParseResult {
   return {
     ...(restore(result) as AcdcParseResult),
     attributeReferences: references,
+    sourceDirectives: directives,
   };
 }

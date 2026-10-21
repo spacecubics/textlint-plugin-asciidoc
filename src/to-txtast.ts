@@ -27,6 +27,10 @@ export function toTxtAST(
     throw new Error(`acdc diagnostics: ${fatalWarnings.join("; ")}`);
   }
   const source = new Source(text);
+  const opaqueRanges = [
+    ...(result.attributeReferences ?? []),
+    ...(result.sourceDirectives ?? []),
+  ].sort((a, b) => a[0] - b[0]);
   const document = result.document;
   if (document.name !== "document") throw new Error("Expected acdc document");
   if (
@@ -152,7 +156,7 @@ export function toTxtAST(
       if (child.type !== "Str") return [child];
       const children: TxtParagraphNode["children"][number][] = [];
       let cursor = child.range[0];
-      for (const [start, end] of result.attributeReferences ?? []) {
+      for (const [start, end] of opaqueRanges) {
         if (start < child.range[0] || end > child.range[1]) continue;
         if (cursor < start) {
           const span = source.span(cursor, start);

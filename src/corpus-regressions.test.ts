@@ -112,3 +112,38 @@ describe("cross references", () => {
     expect(() => parse("----\nUnclosed")).toThrow(/diagnostics/);
   });
 });
+
+describe("file-local includes", () => {
+  it.each(["\n", "\r\n"])(
+    "preserves directives without reading targets with %j",
+    async (eol) => {
+      const text = [
+        "teh before",
+        "include::missing/😀日本語-teh.adoc[]",
+        "teh after {product}",
+        "include::component:module:partial$teh.adoc[tag=example]",
+        "teh final",
+      ].join(eol);
+      await checkFix(
+        text,
+        text
+          .replace("teh before", "the before")
+          .replace("teh after", "the after")
+          .replace("teh final", "the final"),
+      );
+    },
+  );
+  it("keeps directives in code out of prose", async () => {
+    await checkFix(
+      "----\ninclude::missing/teh.adoc[]\n----\n\nteh",
+      "----\ninclude::missing/teh.adoc[]\n----\n\nthe",
+    );
+  });
+  it("preserves include-only files", async () => {
+    const text = "include::https://example.invalid/teh.adoc[]";
+    const ast = await checkFix(text, text);
+    expect(ast.children[0]).toMatchObject({
+      children: [{ type: "Code", value: text, range: [0, text.length] }],
+    });
+  });
+});
