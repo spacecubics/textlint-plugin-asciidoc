@@ -21,7 +21,8 @@ export interface AcdcNode {
   principal?: AcdcNode[];
   marker?: string;
   checked?: boolean;
-  content?: AcdcTable;
+  content?: AcdcTable | string;
+  delimiter?: string;
   metadata?: {
     style?: string;
     attributes?: Record<string, unknown>;

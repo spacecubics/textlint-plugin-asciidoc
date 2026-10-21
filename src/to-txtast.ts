@@ -1,5 +1,6 @@
 import type {
   TxtBlockQuoteNode,
+  TxtCommentNode,
   TxtDocumentNode,
   TxtHeaderNode,
   TxtImageNode,
@@ -152,7 +153,7 @@ export function toTxtAST(
       checked: node.checked ?? null,
       children: [
         ...(node.principal?.length ? [paragraph(node.principal)] : []),
-        ...(node.blocks ?? []).flatMap(block),
+        ...blockChildren(node.blocks ?? []),
       ],
     };
   }
@@ -182,8 +183,45 @@ export function toTxtAST(
       children,
     };
   }
-  type Block = TxtBlockQuoteNode["children"][number];
+  type Block = TxtBlockQuoteNode["children"][number] | TxtCommentNode;
+  function blockChildren(nodes: AcdcNode[]): TxtBlockQuoteNode["children"] {
+    // TxtAST permits Comment at the root and in phrasing content, but its
+    // block-container types require a paragraph around a comment.
+    return nodes
+      .flatMap(block)
+      .map((node) =>
+        node.type === "Comment"
+          ? {
+              type: "Paragraph",
+              ...source.span(...node.range),
+              children: [node],
+            }
+          : node,
+      );
+  }
   function block(node: AcdcNode): Block[] {
+    if (node.name === "comment") {
+      // Line-comment ends in acdc 0.11 overshoot the original line.
+      const span = source.span(
+        source.offset(node.location[0]),
+        source.lineEnd(node.location[1].line),
+      );
+      const lines = span.raw.split(/\r\n|\n|\r/);
+      if (node.delimiter) {
+        if (lines[0] !== node.delimiter || lines.at(-1) !== node.delimiter)
+          throw new Error("Comment delimiters do not match the source");
+        return [
+          { type: "Comment", ...span, value: lines.slice(1, -1).join("\n") },
+        ];
+      }
+      if (
+        lines.length !== 1 ||
+        !span.raw.startsWith("//") ||
+        span.raw.slice(2) !== (node.content ?? "")
+      )
+        throw new Error("Comment content does not match the source");
+      return [{ type: "Comment", ...span, value: span.raw.slice(2) }];
+    }
     if (
       node.title?.length &&
       node.name !== "section" &&
@@ -204,7 +242,7 @@ export function toTxtAST(
         {
           type: "BlockQuote",
           ...source.location(node.location),
-          children: node.blocks.flatMap(block),
+          children: blockChildren(node.blocks),
         },
       ];
     }
@@ -217,7 +255,11 @@ export function toTxtAST(
     if (node.name === "break" && node.variant === "thematic") {
       return [{ type: "HorizontalRule", ...source.location(node.location) }];
     }
-    if (node.name === "table" && node.content) {
+    if (
+      node.name === "table" &&
+      node.content &&
+      typeof node.content !== "string"
+    ) {
       const content = node.content;
       return [
         {
