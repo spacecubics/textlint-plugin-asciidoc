@@ -98,10 +98,10 @@ describe("table cells", () => {
       text.replace("|teh |teh |teh |teh |teh", "|teh |teh |the |the |the"),
     );
   });
-  it("rejects duplicated cells without inventing repeated source positions", () => {
-    expect(() => parse('[cols="1,1"]\n|===\n2*|teh\n|===')).toThrow(
-      /one-to-one/,
-    );
+  it("excludes duplicated cells without inventing repeated source positions", () => {
+    expect(parse('[cols="1,1"]\n|===\n2*|teh\n|===').children).toMatchObject([
+      { type: "CodeBlock" },
+    ]);
   });
 });
 

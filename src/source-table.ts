@@ -8,12 +8,14 @@ export function tableCellRanges(
   source: Source,
   node: AcdcNode,
   table: AcdcTable,
-): [number, number][] {
+): [number, number][] | null {
   const separator = node.metadata?.attributes?.separator ?? node.delimiter?.[0];
-  if (separator !== "|" && separator !== "!")
-    throw new Error(
-      "Source ranges require a pipe or exclamation-delimited table",
-    );
+  const format = node.metadata?.attributes?.format;
+  if (
+    (separator !== "|" && separator !== "!") ||
+    (format !== undefined && format !== "psv")
+  )
+    return null;
   const start = source.lineStart(table.location[0].line + 1);
   const end = source.lineStart(table.location[1].line);
   const separators: number[] = [];

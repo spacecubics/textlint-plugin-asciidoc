@@ -139,7 +139,8 @@ export function toTxtAST(
         return { type: "Str", ...span, value: span.raw };
     }
     if (node.name !== "text" || typeof node.value !== "string") {
-      throw new Error(`Unsupported acdc inline: ${node.name}`);
+      const span = source.location(node.location);
+      return { type: "Code", ...span, value: span.raw };
     }
     let span = source.location(node.location);
     // acdc 0.11 reports escaped punctuation at the backslash only.
@@ -332,6 +333,10 @@ export function toTxtAST(
         : node,
     );
   }
+  function opaqueBlock(node: AcdcNode): Block[] {
+    const span = source.location(node.location);
+    return [{ type: "CodeBlock", ...span, value: span.raw, lang: null }];
+  }
   function block(node: AcdcNode): Block[] {
     if (node.type === "attribute") return [];
     if (node.name === "comment") {
@@ -395,6 +400,14 @@ export function toTxtAST(
     ) {
       return node.blocks.flatMap(block);
     }
+    if (node.name === "break" && node.variant === "page") {
+      // acdc includes the column after the marker, even at end of file.
+      const span = source.span(
+        source.offset(node.location[0]),
+        source.lineEnd(node.location[1].line),
+      );
+      return [{ type: "CodeBlock", ...span, value: span.raw, lang: null }];
+    }
     if (node.name === "break" && node.variant === "thematic") {
       return [{ type: "HorizontalRule", ...source.location(node.location) }];
     }
@@ -411,10 +424,7 @@ export function toTxtAST(
       ];
       const ranges = tableCellRanges(source, node, content);
       const columns = rows.flatMap((row) => row.columns);
-      if (ranges.length !== columns.length)
-        throw new Error(
-          "Table cells cannot be mapped one-to-one to the source",
-        );
+      if (!ranges || ranges.length !== columns.length) return opaqueBlock(node);
       const complex = columns.some(
         (column) =>
           column.content.length > 1 ||
@@ -570,7 +580,7 @@ export function toTxtAST(
       ];
     }
     if (node.name !== "paragraph" || !node.inlines) {
-      throw new Error(`Unsupported acdc block: ${node.name}`);
+      return opaqueBlock(node);
     }
     return [
       {

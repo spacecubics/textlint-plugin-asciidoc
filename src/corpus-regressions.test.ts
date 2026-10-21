@@ -266,3 +266,53 @@ describe("additional prose syntax", () => {
     );
   });
 });
+
+describe("opaque unsupported elements", () => {
+  it.each([
+    "kbd:[teh]",
+    "btn:[teh]",
+    "menu:teh[teh > teh]",
+    "pass:[<b>teh</b>]",
+    "+++<b>teh</b>+++",
+    "(((teh)))",
+  ])("lints prose around %s", async (element) => {
+    for (const eol of ["\n", "\r\n"]) {
+      const text = `:experimental:${eol}${eol}😀 Before teh ${element} after **teh**.`;
+      await checkFix(
+        text,
+        text.replace("Before teh", "Before the").replace("**teh**", "**the**"),
+      );
+    }
+  });
+  it.each([
+    "++++\n<b>teh</b>\n++++",
+    "video::teh.mp4[]",
+    "audio::teh.ogg[]",
+    "<<<",
+    '[format="csv"]\n|===\nteh,teh\nteh,teh\n|===',
+    '[separator=";"]\n|===\n;teh;teh\n|===',
+    '[cols="1,1"]\n|===\n2*|teh\n|===',
+  ])("lints prose around block %s", async (element) => {
+    for (const eol of ["\n", "\r\n"]) {
+      const text = `😀 Before teh.\n\n${element}\n\nAfter teh.`.replaceAll(
+        "\n",
+        eol,
+      );
+      await checkFix(
+        text,
+        text
+          .replace("Before teh", "Before the")
+          .replace("After teh", "After the"),
+      );
+    }
+  });
+  it("accepts a page break at EOF", async () => {
+    await checkFix("Before teh.\n\n<<<");
+  });
+  it("lints captions of otherwise opaque blocks", async () => {
+    await checkFix(
+      ".A teh caption\nvideo::teh.mp4[]",
+      ".A the caption\nvideo::teh.mp4[]",
+    );
+  });
+});
