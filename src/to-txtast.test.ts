@@ -426,3 +426,39 @@ describe("block containers and tables", () => {
     });
   });
 });
+
+describe("source substitutions", () => {
+  it.each([
+    "Read \\*teh\\* word.",
+    "Read \\_teh\\_ word.",
+    "\\{name} has teh value.",
+    "* Read teh \\*",
+    "|===\n|Read teh \\*\n|===",
+  ])("preserves escapes when fixing %s", async (text) => {
+    const ast = parse(text);
+    assertAST({ ...ast });
+    const kernel = new TextlintKernel();
+    const result = await kernel.lintText(text, options);
+    expect(result.messages).toHaveLength(1);
+    expect((await kernel.fixText(text, options)).output).toBe(
+      text.replace("teh", "the"),
+    );
+  });
+  it("retains escape syntax in Str values for source-based rules", () => {
+    expect(parse("An \\*escaped\\* word.").children[0]).toMatchObject({
+      children: [
+        { value: "An " },
+        { type: "Str", value: "\\*", raw: "\\*", range: [3, 5] },
+        { value: "escaped" },
+        { type: "Str", value: "\\*", raw: "\\*", range: [12, 14] },
+        { value: " word." },
+      ],
+    });
+  });
+  it("rejects attribute expansion without a source mapping", () => {
+    expect(() => parse(":name: World\n\nHello {name}.")).toThrow(
+      /attributes require an original-source mapping/,
+    );
+    expect(() => parse("Hello {nbsp}world.")).toThrow();
+  });
+});

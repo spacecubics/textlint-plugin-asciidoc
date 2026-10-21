@@ -20,12 +20,9 @@ export function toTxtAST(
   }
   const source = new Source(text);
   const document = result.document;
-  if (
-    document.name !== "document" ||
-    Object.keys(document.attributes ?? {}).length
-  ) {
-    throw new Error("Unsupported acdc document header or attributes");
-  }
+  if (document.name !== "document") throw new Error("Expected acdc document");
+  if (Object.keys(document.attributes ?? {}).length)
+    throw new Error("Document attributes require an original-source mapping");
   function codeValue(nodes: AcdcNode[]): string {
     return nodes
       .map((node) => {
@@ -91,10 +88,25 @@ export function toTxtAST(
     }
     if (node.name === "break")
       return { type: "Break", ...source.location(node.location) };
+    if (node.name === "raw" && typeof node.value === "string") {
+      const span = source.location(node.location);
+      if (span.raw === `\\${node.value}` && /^\{[^{}]+\}$/.test(node.value))
+        return { type: "Str", ...span, value: span.raw };
+    }
     if (node.name !== "text" || typeof node.value !== "string") {
       throw new Error(`Unsupported acdc inline: ${node.name}`);
     }
-    const span = source.location(node.location);
+    let span = source.location(node.location);
+    // acdc 0.11 reports escaped punctuation at the backslash only.
+    // Extend only when the adjacent source character exactly matches.
+    if (
+      span.raw === "\\" &&
+      /^[*_`#{}[\]\\]$/.test(node.value) &&
+      text[span.range[1]] === node.value
+    ) {
+      span = source.span(span.range[0], span.range[1] + 1);
+      return { type: "Str", ...span, value: span.raw };
+    }
     if (
       span.raw.replace(/\r\n/g, "\n").replace(/[ \t]+(?=\n)/g, "") !==
       node.value
@@ -121,13 +133,14 @@ export function toTxtAST(
   }
   function paragraph(nodes: AcdcNode[]): TxtParagraphNode {
     if (!nodes.length) throw new Error("Missing paragraph content");
+    const children = nodes.map(inline);
     return {
       type: "Paragraph",
       ...source.span(
-        source.offset(nodes[0].location[0]),
-        source.offset(nodes[nodes.length - 1].location[1], true),
+        children[0].range[0],
+        children[children.length - 1].range[1],
       ),
-      children: nodes.map(inline),
+      children,
     };
   }
   function listItem(node: AcdcNode): TxtListItemNode {
