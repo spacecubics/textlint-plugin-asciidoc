@@ -73,3 +73,51 @@ describe("plain text", () => {
     expect(() => parse("----\nUnclosed")).toThrow(/diagnostics/);
   });
 });
+
+describe("paragraph boundaries", () => {
+  it.each(["\n", "\r\n"])(
+    "preserves %j line endings and fixes the second line",
+    async (eol) => {
+      const text = `First.  ${eol}Read teh manual.${eol}${eol}Last.${eol}`;
+      const ast = parse(text);
+      assertAST({ ...ast });
+      expect(ast.children.map((node) => node.raw)).toEqual([
+        `First.  ${eol}Read teh manual.`,
+        "Last.",
+      ]);
+      expect(ast.range).toEqual([0, text.length]);
+      expect(ast.loc.end).toEqual({ line: 5, column: 0 });
+      expect(ast.children[1].loc.start).toEqual({ line: 4, column: 0 });
+      const kernel = new TextlintKernel();
+      const lint = await kernel.lintText(text, options);
+      expect(lint.messages[0]).toMatchObject({ line: 2, column: 6 });
+      expect((await kernel.fixText(text, options)).output).toBe(
+        text.replace("teh", "the"),
+      );
+    },
+  );
+  it("preserves blank input without inventing paragraphs", () => {
+    const ast = parse("\n\n");
+    expect(ast.children).toEqual([]);
+    expect(ast.range).toEqual([0, 2]);
+    expect(ast.loc.end).toEqual({ line: 3, column: 0 });
+  });
+});
+
+it("maps an explicit line break without moving following text", async () => {
+  const text = "First. +\nRead teh manual.";
+  expect(parse(text).children[0]).toMatchObject({
+    children: [
+      { type: "Str", value: "First." },
+      { type: "Break", raw: " +", range: [6, 8] },
+      {
+        type: "Str",
+        value: "Read teh manual.",
+        loc: { start: { line: 2, column: 0 } },
+      },
+    ],
+  });
+  expect((await new TextlintKernel().fixText(text, options)).output).toBe(
+    "First. +\nRead the manual.",
+  );
+});

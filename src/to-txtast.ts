@@ -1,4 +1,5 @@
 import type {
+  TxtBreakNode,
   TxtDocumentNode,
   TxtParagraphNode,
   TxtStrNode,
@@ -23,12 +24,17 @@ export function toTxtAST(
   ) {
     throw new Error("Unsupported acdc document header or attributes");
   }
-  function inline(node: AcdcNode): TxtStrNode {
+  function inline(node: AcdcNode): TxtStrNode | TxtBreakNode {
+    if (node.name === "break")
+      return { type: "Break", ...source.location(node.location) };
     if (node.name !== "text" || typeof node.value !== "string") {
       throw new Error(`Unsupported acdc inline: ${node.name}`);
     }
     const span = source.location(node.location);
-    if (span.raw !== node.value) {
+    if (
+      span.raw.replace(/\r\n/g, "\n").replace(/[ \t]+(?=\n)/g, "") !==
+      node.value
+    ) {
       throw new Error(
         "Transformed text cannot be mapped to the original source",
       );
